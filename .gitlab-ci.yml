@@ -1,0 +1,57 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+stages:
+  - test
+
+default:
+  image: node:24-bookworm
+  interruptible: true
+
+variables:
+  STELLAR_USE_SOURCE_BOOTSTRAP: "true"
+  npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  npm_config_audit: "false"
+  npm_config_fund: "false"
+
+build-and-unit-tests:
+  stage: test
+  timeout: 45 minutes
+  cache:
+    key:
+      prefix: npm-node24
+      files:
+        - package-lock.json
+    paths:
+      - .cache/npm/
+  script:
+    - |
+      set -eu
+      workspace="$CI_PROJECT_DIR/.ci/workspace"
+      mkdir -p "$workspace"
+      git clone --quiet --no-hardlinks "$CI_PROJECT_DIR" "$workspace/tianshu-web"
+      if [ "$STELLAR_USE_SOURCE_BOOTSTRAP" != "false" ]; then
+        # The web-sdk project must allow this project's CI_JOB_TOKEN to read its repository.
+        # Override STELLAR_SOURCE_BASE_URL to use another group or source mirror.
+        source_base="${STELLAR_SOURCE_BASE_URL:-${CI_REPOSITORY_URL%/*}}"
+        git clone --quiet --depth 1 "$source_base/web-sdk.git" "$workspace/web-sdk"
+        node "$workspace/web-sdk/scripts/verify-migration-consumers.mjs" \
+          --workspace "$workspace" \
+          --cache "$npm_config_cache" \
+          --output "$CI_PROJECT_DIR/.ci/npm-release" \
+          --consumer tianshu-web --phase verify --online true
+      else
+        cd "$workspace/tianshu-web"
+        npm ci
+        npm run build
+        npm test -- --run --testTimeout=15000
+      fi
+  artifacts:
+    expire_in: 7 days
+    paths:
+      - .ci/workspace/tianshu-web/dist/
