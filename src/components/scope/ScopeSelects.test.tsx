@@ -1,0 +1,135 @@
+import {fireEvent, screen, waitFor} from '@testing-library/react'
+import {useState} from 'react'
+import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {setDdcUnauthorizedHandler} from '../../api/client'
+import {renderWithQueryClient} from '../../test/renderWithQueryClient'
+import ScopeSelects, {type ScopeValue} from './ScopeSelects'
+
+// 说明：jsdom + React 19 下 antd 下拉 portal 的选项点击事件无法送达 React（环境缺口，
+// 真实浏览器无此问题）。交互测试统一走"输入 + Enter"路径，下拉选项只做渲染断言。
+
+const record = (data: unknown) => ({
+  success: true, code: 0, status: 'SUCCESS', message: '', data, traceId: 't', timestamp: 1,
+})
+
+const jsonResponse = (body: unknown) =>
+  new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+const appPayload = (code: string) => ({
+  id: code, appCode: code, bizCode: 'pay-biz', appName: '', owner: 'ops', description: '', enabled: true,
+  createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z',
+})
+
+// 渲染顺序固定：业务域(0) → 命名空间(1) → 环境(2) → 应用(3)
+const scopeInputs = (): HTMLInputElement[] =>
+  Array.from(document.querySelectorAll('input.ant-select-input')) as HTMLInputElement[]
+
+const typeAndEnter = (input: HTMLInputElement, value: string): void => {
+  fireEvent.change(input, { target: { value } })
+  fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13 })
+}
+
+const mockScopeEndpoints = (bizs: string[], apps: string[], nss: string[], envs: string[]): void => {
+  vi.mocked(fetch).mockImplementation((input) => {
+    const url = String(input)
+    if (url.includes('/bizs')) return Promise.resolve(jsonResponse(record(bizs.map((b) => ({ id: b, bizCode: b, bizName: b, description: '', enabled: true, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' })))))
+    if (url.includes('/envs')) return Promise.resolve(jsonResponse(record(envs.map((e) => ({ id: e, envCode: e, description: e, sortOrder: 10, enabled: true, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' })))))
+    if (url.includes('/apps')) return Promise.resolve(jsonResponse(record(apps.map(appPayload))))
+    if (url.includes('/namespaces')) return Promise.resolve(jsonResponse(record(nss.map((n) => ({ id: n, bizCode: 'pay-biz', namespaceCode: n, namespace: n, description: '', enabled: true, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' })))))
+    return Promise.resolve(jsonResponse(record(null)))
+  })
+}
+
+describe('ScopeSelects', () => {
+  beforeEach(() => {
+    setDdcUnauthorizedHandler(() => {})
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  it('renders four level selects with cascade clearing', async () => {
+    mockScopeEndpoints(['pay-biz'], ['orders-app'], ['default'], ['dev'])
+
+    const value: ScopeValue = { bizCode: '', namespaceCode: '', env: '', appCode: '' }
+    const onChange = vi.fn((next: ScopeValue) => Object.assign(value, next))
+
+    renderWithQueryClient(<ScopeSelects value={value} onChange={onChange} />)
+    await waitFor(() => expect(screen.getAllByText('请选择或输入业务域').length).toBeGreaterThan(0))
+
+    // 输入新业务域：清空所有下级
+    typeAndEnter(scopeInputs()[0], 'pay-biz')
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ bizCode: 'pay-biz', namespaceCode: '', env: '', appCode: '' }))
+
+    // 输入命名空间
+    typeAndEnter(scopeInputs()[1], 'default')
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ namespaceCode: 'default', env: '', appCode: '' }))
+
+    // 输入环境
+    typeAndEnter(scopeInputs()[2], 'dev')
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ env: 'dev', appCode: '' }))
+
+    // 输入应用
+    typeAndEnter(scopeInputs()[3], 'orders-app')
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ appCode: 'orders-app' }))
+  })
+
+  it('loads namespace, env and app options by the selected parent scope', async () => {
+    mockScopeEndpoints(['pay-biz'], ['orders-app'], ['default'], ['dev'])
+
+    renderWithQueryClient(<ScopeSelects value={{ bizCode: 'pay-biz', namespaceCode: 'default', env: 'dev', appCode: 'orders-app' }} onChange={() => {}} />)
+    await waitFor(() => {
+      const appsCall = vi.mocked(fetch).mock.calls
+        .find(([url]) => String(url).includes('/apps')
+          && String(url).includes('bizCode=pay-biz')
+          && String(url).includes('namespaceCode=default')
+          && String(url).includes('env=dev'))
+      expect(appsCall).toBeDefined()
+    })
+    await waitFor(() => {
+      const nsCall = vi.mocked(fetch).mock.calls
+        .find(([url]) => String(url).includes('/namespaces') && String(url).includes('bizCode=pay-biz'))
+      expect(nsCall).toBeDefined()
+    })
+    await waitFor(() => {
+      const envCall = vi.mocked(fetch).mock.calls
+        .find(([url]) => String(url).includes('/envs')
+          && String(url).includes('bizCode=pay-biz')
+          && String(url).includes('namespaceCode=default'))
+      expect(envCall).toBeDefined()
+    })
+  })
+
+  it('uses the namespace code instead of its parent business code in options', async () => {
+    mockScopeEndpoints(['pay-biz'], ['orders-app'], ['default'], ['dev'])
+    renderWithQueryClient(<ScopeSelects value={{bizCode: 'pay-biz', namespaceCode: '', env: '', appCode: ''}} onChange={() => {}} />)
+    fireEvent.mouseDown(scopeInputs()[1])
+    expect((await screen.findAllByText('default（default）')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('pay-biz（default）')).not.toBeInTheDocument()
+  })
+
+  it('clears namespace, env and app when biz changes', async () => {
+    mockScopeEndpoints(['pay-biz', 'risk-biz'], ['orders-app'], ['default'], ['dev'])
+
+    const onChange = vi.fn()
+    const Harness = () => {
+      const [value, setValue] = useState<ScopeValue>({ bizCode: 'pay-biz', namespaceCode: 'default', env: 'dev', appCode: 'orders-app' })
+      return (
+        <ScopeSelects
+          value={value}
+          onChange={(next) => {
+            setValue(next)
+            onChange(next)
+          }}
+        />
+      )
+    }
+
+    renderWithQueryClient(<Harness />)
+    await waitFor(() => expect(screen.getAllByText(/pay-biz/).length).toBeGreaterThan(0))
+
+    // 换业务域（maxCount=1 需先移除 tag 再输入）
+    const removeButton = document.querySelector('.ant-select-selection-item-remove') as HTMLElement
+    fireEvent.click(removeButton)
+    typeAndEnter(scopeInputs()[0], 'risk-biz')
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ bizCode: 'risk-biz', namespaceCode: '', env: '', appCode: '' }))
+  })
+})

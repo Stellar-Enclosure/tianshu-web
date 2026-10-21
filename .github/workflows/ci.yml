@@ -1,0 +1,48 @@
+name: Validate
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: Stellar-Enclosure/tianshu-web
+          path: workspace/tianshu-web
+          token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: workspace/tianshu-web/package-lock.json
+      - uses: actions/checkout@v5
+        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP != 'false'
+        with:
+          repository: Stellar-Enclosure/web-sdk
+          path: workspace/web-sdk
+          token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Validate unpublished SDK tarballs
+        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP != 'false'
+        run: |
+          node workspace/web-sdk/scripts/verify-migration-consumers.mjs \
+            --workspace "$GITHUB_WORKSPACE/workspace" \
+            --cache "$RUNNER_TEMP/stellar-npm" \
+            --output "$RUNNER_TEMP/stellar-npm-release" \
+            --consumer tianshu-web --phase verify --online true
+      - name: Validate published SDKs
+        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP == 'false'
+        working-directory: workspace/tianshu-web
+        run: |
+          npm ci
+          npm run build
+          npm test -- --run --testTimeout=15000
