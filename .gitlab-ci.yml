@@ -40,7 +40,7 @@ build-and-unit-tests:
         # Override STELLAR_SOURCE_BASE_URL to use another group or source mirror.
         source_base="${STELLAR_SOURCE_BASE_URL:-${CI_REPOSITORY_URL%/*}}"
         git clone --quiet --depth 1 "$source_base/web-sdk.git" "$workspace/web-sdk"
-        node "$workspace/web-sdk/scripts/verify-migration-consumers.mjs" \
+        node "$workspace/web-sdk/scripts/verify-consumers.mjs" \
           --workspace "$workspace" \
           --cache "$npm_config_cache" \
           --output "$CI_PROJECT_DIR/.ci/npm-release" \

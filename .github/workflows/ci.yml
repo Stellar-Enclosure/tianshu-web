@@ -34,7 +34,7 @@ jobs:
       - name: Build and test using source SDKs
         if: vars.STELLAR_USE_SOURCE_BOOTSTRAP != 'false'
         run: |
-          node workspace/web-sdk/scripts/verify-migration-consumers.mjs \
+          node workspace/web-sdk/scripts/verify-consumers.mjs \
             --workspace "$GITHUB_WORKSPACE/workspace" \
             --cache "$HOME/.npm" \
             --output "$RUNNER_TEMP/stellar-npm-release" \

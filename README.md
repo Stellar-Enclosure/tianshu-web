@@ -2,8 +2,6 @@
 
 Stellar Enclosure frontend. All first-party modules start at **0.0.1**.
 
-Migrated from [52e407ee3be8](https://github.com/AllenDEricDAlexander/Egon-COLA/tree/52e407ee3be892200aafadb19ad912189f5ada1c). Maven namespace: `top.egon`; npm organization: `@stellar-enclosure`.
-
 ## Build and test
 
 Requires Node 24 and npm 11. After the SDKs are published:
@@ -17,10 +15,10 @@ npm test -- --run
 For the initial release before npm publication, clone `web-sdk` next to this repository:
 
 ```bash
-node ../web-sdk/scripts/verify-migration-consumers.mjs \
+node ../web-sdk/scripts/verify-consumers.mjs \
   --workspace "$(cd .. && pwd)" \
-  --cache "$(cd .. && pwd)/.migration/npm-cache" \
-  --output "$(cd .. && pwd)/.migration/npm-release" \
+  --cache "$HOME/.npm" \
+  --output "$(pwd)/dist/sdk-verification" \
   --consumer tianshu-web --phase verify --online true
 ```
 
