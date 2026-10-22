@@ -1,6 +1,22 @@
 # tianshu-web
 
-Stellar Enclosure frontend. All first-party modules start at **0.0.1**.
+[English](README.md) | [中文](README.zh-CN.md)
+
+React management console for the Tianshu service registry, configuration center and Prompt/Skill resources. All first-party modules start at **0.0.1**.
+
+## Pages and capabilities
+
+| Routes | Function |
+|---|---|
+| `/registry` | Browse registered services and load their instances within the selected scope. |
+| `/configs`, `/publish-tasks` | Edit YAML resources, inspect versions, publish/roll back, inspect publication targets/results and retry tasks. |
+| `/bizs`, `/apps`, `/namespaces`, `/envs`, `/bindings` | Manage scope metadata and namespace/environment/application bindings. |
+| `/instances`, `/cache` | Inspect configuration clients, query cache consistency and request cache rebuilds. |
+| `/ai/prompts`, `/ai/skills`, `/ai/resources/:id` | Edit Prompt/Skill drafts and Skill files, inspect/publish/roll back versions, promote versions across scopes, and manage feedback/optimization. |
+
+Routes are defined in [src/App.tsx](src/App.tsx); page implementations live under [src/pages](src/pages/), with [AI API contracts](src/api/ai.ts). Management tables use backend pagination while scope selectors retain complete option lists.
+
+The backend is [tianshu-service](https://github.com/Stellar-Enclosure/tianshu-service). Authentication uses the shared SDK with Edge registration `edge-tianshu`, server-held OAuth tokens and `/api/v1/tianshu/auth/bootstrap`; console admission requires `TIANSHU_READ`. The SPA does not implement machine gRPC registration, configuration delivery or the Admin's publication state machine. It runs standalone or as a portal child using `VITE_BASE_PATH`; real authentication and service availability require separate runtime verification.
 
 ## Build and test
 

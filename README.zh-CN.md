@@ -1,14 +1,26 @@
 # Tianshu Admin Web
 
-[English](README.md) | [Tianshu 总览](../README.zh-CN.md)
+[English](README.md) | [Tianshu 服务端](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/README.zh-CN.md)
 
 Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制台。它只与 Tianshu Admin
 通信，不直接调用其他组件。
 
+## 功能页面
+
+| 页面 | 当前功能 |
+|---|---|
+| `/registry` | 按完整作用域查询服务目录，并按需加载实例 |
+| `/configs`、`/publish-tasks` | YAML 编辑、版本、发布/回滚及发布任务结果/重试 |
+| `/bizs`、`/apps`、`/namespaces`、`/envs`、`/bindings` | 作用域元数据与绑定维护 |
+| `/instances`、`/cache` | 配置客户端实例、缓存一致性检查与重建 |
+| `/ai/prompts`、`/ai/skills`、`/ai/resources/:id` | Prompt/Skill 草稿与文件编辑、版本发布/回滚、跨 scope 推广、使用反馈与优化 |
+
+路由以 [src/App.tsx](src/App.tsx) 为准，页面实现在 [src/pages](src/pages/)。可独立部署，也可通过 `VITE_BASE_PATH` 挂载到 Portal；注册租约、配置刷新与发布状态机由服务端/Starter 实现。
+
 ## 认证
 
 控制台通过 `@stellar-enclosure/stellar-enclosure-web-shared` 的 `createGatewayAuthClient` 走平台统一
-身份登录；登录跳转到配置的 Edge OIDC registration（`/oauth2/authorization/edge-ui`）。Edge 在
+身份登录；登录跳转到配置的 Edge OIDC registration（默认 `/oauth2/authorization/edge-tianshu`，可通过 `VITE_OAUTH_REGISTRATION_ID` 覆盖）。Edge 在
 服务端保管 OAuth Token，并给浏览器 `HttpOnly` 会话 Cookie；浏览器不会提交租户、用户名或密码，
 也不会保存 AT/RT。
 
