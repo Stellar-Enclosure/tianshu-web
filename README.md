@@ -18,11 +18,23 @@ For the initial release before npm publication, clone `web-sdk` next to this rep
 node ../web-sdk/scripts/verify-consumers.mjs \
   --workspace "$(cd .. && pwd)" \
   --cache "$HOME/.npm" \
-  --output "$(pwd)/dist/sdk-verification" \
+  --output "$(cd ../web-sdk && pwd)/dist/npm-release" \
   --consumer tianshu-web --phase verify --online true
 ```
 
 The verifier uses actual pack checksums and official registry addresses in the committed lock, then validates offline installation. It never publishes packages.
+
+## Application delivery (no package publication)
+
+This repository is a frontend application, not a library. Its `package.json` remains `private: true`; do not publish it to npm or Maven Central. Publish only the reusable packages owned by [web-sdk](https://github.com/Stellar-Enclosure/web-sdk#publish-to-npmjs).
+
+```bash
+npm ci
+npm test
+npm run build
+```
+
+Deploy the resulting `dist/` directory as static application assets. Before the first SDK publication, use the Build section's local consumer verification instead of `npm ci` against the public registry. These commands do not start a server.
 
 ## Compatibility and publication
 

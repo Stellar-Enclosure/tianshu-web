@@ -104,3 +104,7 @@ docker run --rm -p 8080:8080 \
 ```
 
 健康检查：`GET /healthz` 返回 `ok`。
+
+## 独立仓库发布
+
+发布范围、前置配置、校验与发布命令见 [仓库 README](README.md#application-delivery-no-package-publication)。应用和测试示例不发布到 Maven Central，前端站点保持 `private: true`。
