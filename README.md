@@ -11,12 +11,37 @@ React management console for the Tianshu service registry, configuration center 
 | `/registry` | Browse registered services and load their instances within the selected scope. |
 | `/configs`, `/publish-tasks` | Edit YAML resources, inspect versions, publish/roll back, inspect publication targets/results and retry tasks. |
 | `/bizs`, `/apps`, `/namespaces`, `/envs`, `/bindings` | Manage scope metadata and namespace/environment/application bindings. |
+| `/metadata/i18n` | Enterprise metadata center: edit page/shared translations, save drafts, publish, and preview rendered language bundles and JSON. |
 | `/instances`, `/cache` | Inspect configuration clients, query cache consistency and request cache rebuilds. |
 | `/ai/prompts`, `/ai/skills`, `/ai/resources/:id` | Edit Prompt/Skill drafts and Skill files, inspect/publish/roll back versions, promote versions across scopes, and manage feedback/optimization. |
 
 Routes are defined in [src/App.tsx](src/App.tsx); page implementations live under [src/pages](src/pages/), with [AI API contracts](src/api/ai.ts). Management tables use backend pagination while scope selectors retain complete option lists.
 
 The backend is [tianshu-service](https://github.com/Stellar-Enclosure/tianshu-service). Authentication uses the shared SDK with Edge registration `edge-tianshu`, server-held OAuth tokens and `/api/v1/tianshu/auth/bootstrap`; console admission requires `TIANSHU_READ`. The SPA does not implement machine gRPC registration, configuration delivery or the Admin's publication state machine. It runs standalone or as a portal child using `VITE_BASE_PATH`; real authentication and service availability require separate runtime verification.
+
+## Page translations
+
+Create a stable page code such as `order.list`, or `common` for shared messages, within an existing bound scope.
+Edit translations by key and locale, save the draft, then publish all locales together. Missing translations fall back
+to the configured default language. The preview reads published data through the shared Web SDK; it never exposes draft text.
+All existing Tianshu routes, navigation, authentication screens, dialogs, validation messages and component labels
+now use the enterprise metadata center. The server supplies the administration scope; business filters cannot change it.
+The interface language selector loads the new bundles before switching, keeping unsaved inputs intact.
+
+In `/metadata/i18n`, choose **View administration bundles** to select the console's fixed scope.
+After its business/namespace/environment/application binding exists, **Initialize default text** creates and publishes
+only missing server-owned catalogs. Existing pages and drafts are preserved. Until initialization, the center serves its
+packaged defaults; published tenant translations override those defaults. Publishing in this scope refreshes visible text.
+The anonymous login endpoint exposes only the static `tianshu.auth` catalog and never reads tenant data.
+
+Management requires `TIANSHU_READ`, editing requires `TIANSHU_WRITE`, and publication requires `TIANSHU_PUBLISH`,
+with both the OAuth scope and corresponding capability granted. Include the required scopes in the Edge login registration.
+Bundle-only consumers can use `TIANSHU_I18N_READ`. See the [backend integration guide](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/docs/page-i18n.md).
+Build the matching Web SDK change before verifying this console locally using the workflow below.
+
+Default catalogs live in `tianshu-service/stellar-enclosure-tianshu-admin/src/main/resources/i18n/tianshu-admin`.
+The frontend ships no production business dictionary. `src/test/i18nCatalogs.json` is a test-only fixture generated
+with `node scripts/sync-i18n-fixtures.mjs`; use `--check` to verify it against the server source in a sibling checkout.
 
 ## Build and test
 

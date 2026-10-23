@@ -33,6 +33,8 @@ import type {
   DdcAiPolicyState,
   DdcAiRunState,
 } from '../api/types'
+import { usePageMessages, type AdminTranslate } from '../i18n/AdminI18nProvider'
+import { formatAdminError } from '../i18n/errors'
 import { formatTime } from '../lib/query'
 import { uuidV7 } from '../lib/uuid'
 
@@ -47,19 +49,19 @@ const ALIAS_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
 const DURATION_PATTERN = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/
 
 const POLICY_STATE_LABELS: Record<DdcAiPolicyState, string> = {
-  ARMED: '待评估',
-  AWAITING_PUBLISH: '待人工发布',
-  CONVERGED: '已收敛',
-  EXHAUSTED: '已达迭代上限',
-  PAUSED: '已暂停',
+  ARMED: 'optimization.policyState.ARMED',
+  AWAITING_PUBLISH: 'optimization.policyState.AWAITING_PUBLISH',
+  CONVERGED: 'optimization.policyState.CONVERGED',
+  EXHAUSTED: 'optimization.policyState.EXHAUSTED',
+  PAUSED: 'optimization.policyState.PAUSED',
 }
 
 const RUN_STATE_LABELS: Record<DdcAiRunState, string> = {
-  PENDING: '待执行',
-  RUNNING: '执行中',
-  SUCCEEDED: '成功',
-  FAILED: '失败',
-  SKIPPED: '已跳过',
+  PENDING: 'optimization.runState.PENDING',
+  RUNNING: 'optimization.runState.RUNNING',
+  SUCCEEDED: 'optimization.runState.SUCCEEDED',
+  FAILED: 'optimization.runState.FAILED',
+  SKIPPED: 'optimization.runState.SKIPPED',
 }
 
 const RUN_STATE_COLORS: Record<DdcAiRunState, string> = {
@@ -92,36 +94,37 @@ const policyFields = (policy: DdcAiOptimizationPolicyResult): DdcAiOptimizationP
   optimizerInstruction: policy.optimizerInstruction,
 })
 
-const validationErrors = (fields: DdcAiOptimizationPolicyFields): string[] => {
+const validationErrors = (fields: DdcAiOptimizationPolicyFields, t: AdminTranslate): string[] => {
   const errors: string[] = []
   const window = durationSeconds(fields.evaluationWindow)
   const cooldown = durationSeconds(fields.cooldown)
-  if (window === null || window < 300 || window > 2_592_000) errors.push('评估窗口须为 PT5M 到 P30D 之间的 ISO-8601 时长')
-  if (cooldown === null || cooldown < 60 || cooldown > 604_800) errors.push('冷却时间须为 PT1M 到 P7D 之间的 ISO-8601 时长')
-  if (!ALIAS_PATTERN.test(fields.optimizerModelAlias)) errors.push('优化模型别名格式无效')
-  if (!ALIAS_PATTERN.test(fields.judgeModelAlias)) errors.push('评分模型别名格式无效')
-  if (fields.optimizerInstruction.length > 4096) errors.push('优化指令最多 4096 个字符')
+  if (window === null || window < 300 || window > 2_592_000) errors.push(t('optimization.validation.evaluationWindow'))
+  if (cooldown === null || cooldown < 60 || cooldown > 604_800) errors.push(t('optimization.validation.cooldown'))
+  if (!ALIAS_PATTERN.test(fields.optimizerModelAlias)) errors.push(t('optimization.validation.optimizerAlias'))
+  if (!ALIAS_PATTERN.test(fields.judgeModelAlias)) errors.push(t('optimization.validation.judgeAlias'))
+  if (fields.optimizerInstruction.length > 4096) errors.push(t('optimization.validation.instruction'))
   return errors
 }
 
 const errorCode = (error: unknown): string | undefined => error instanceof DdcApiError ? error.code : undefined
 
-const failureText = (error: unknown): string => {
-  if (error instanceof DdcApiError && error.status === 403) return '当前身份无权执行此操作'
-  return error instanceof Error ? error.message : String(error)
+const failureText = (error: unknown, t: AdminTranslate): string => {
+  if (error instanceof DdcApiError && error.status === 403) return t('editor.operationDenied')
+  return formatAdminError(error, t)
 }
 
-const utcTime = (value: string | null | undefined) => value
-  ? <span title={`UTC ${value}`}>{formatTime(value)}</span>
+const utcTime = (value: string | null | undefined, locale: string, t: AdminTranslate) => value
+  ? <span title={t('feedback.utcTime', { value })}>{formatTime(value, locale)}</span>
   : '—'
 
 export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 }: Props) {
+  const { t, locale } = usePageMessages('tianshu.ai.editor')
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [edits, setEdits] = useState<Partial<DdcAiOptimizationPolicyFields>>({})
   const [conflict, setConflict] = useState(false)
   const [channelDisabled, setChannelDisabled] = useState(false)
-  const [failure, setFailure] = useState<string>()
+  const [failure, setFailure] = useState<{ error: unknown }>()
   const [note, setNote] = useState('')
   const [triggeredRunId, setTriggeredRunId] = useState<string | null>(null)
   const [runStateFilter, setRunStateFilter] = useState<DdcAiRunState | 'ALL'>('ALL')
@@ -164,7 +167,7 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
   }, [trackedRunId, trackedTerminalState, queryClient, resourceId])
 
   const fields = policy ? { ...policyFields(policy), ...edits } : null
-  const errors = fields ? validationErrors(fields) : []
+  const errors = fields ? validationErrors(fields, t) : []
 
   const saveMutation = useMutation({
     mutationFn: (rearm: boolean) => replaceAiOptimizationPolicy(resourceId, {
@@ -177,14 +180,14 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
       setEdits({})
       setConflict(false)
       setFailure(undefined)
-      message.success('优化策略已保存')
+      message.success(t('optimization.saved'))
     },
     onError: (error) => {
       const code = errorCode(error)
       if (code === '56303') setConflict(true)
-      else if (code === '56323') message.warning('存在进行中的优化运行，结束后才能重新启用')
+      else if (code === '56323') message.warning(t('optimization.rearmBlocked'))
       else if (code === '56322') setChannelDisabled(true)
-      else setFailure(failureText(error))
+      else setFailure({ error })
     },
   })
 
@@ -199,9 +202,9 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
     onError: (error) => {
       const code = errorCode(error)
       if (code === '56322') setChannelDisabled(true)
-      else if (code === '56323') message.warning('已有优化运行在进行中')
-      else if (code === '56321') message.warning('资源尚未发布，无法优化')
-      else setFailure(failureText(error))
+      else if (code === '56323') message.warning(t('optimization.alreadyRunning'))
+      else if (code === '56321') message.warning(t('optimization.unpublishedResource'))
+      else setFailure({ error })
     },
   })
 
@@ -210,131 +213,131 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
 
   if (policyQuery.isPending) return <Spin />
   if (policyQuery.isError || !policy || !fields) {
-    return <Alert type="error" showIcon title={`优化策略不可用：${failureText(policyQuery.error)}`} />
+    return <Alert type="error" showIcon title={t('optimization.unavailable', { error: failureText(policyQuery.error, t) })} />
   }
 
   const runColumns: TableColumnsType<DdcAiOptimizationRunResult> = [
-    { title: '运行号', dataIndex: 'runNo', key: 'runNo' },
-    { title: '触发', dataIndex: 'trigger', key: 'trigger', render: (value: string) => value === 'MANUAL' ? '手动' : '定时' },
-    { title: '状态', dataIndex: 'state', key: 'state', render: (value: DdcAiRunState) => <Tag color={RUN_STATE_COLORS[value]}>{value}</Tag> },
-    { title: '基线版本', dataIndex: 'baseVersionNo', key: 'baseVersionNo', render: (value: string | null) => value ?? '—' },
-    { title: '样本 / 均分', key: 'score', render: (_, run) => `${run.sampleCount} / ${run.averageScore ?? '—'}` },
-    { title: '产出版本', dataIndex: 'producedVersionNo', key: 'producedVersionNo', render: (value: string | null, run) =>
-      value ? `${value}${run.autoPublished ? '（已自动发布）' : '（草稿）'}` : '—' },
-    { title: '错误', dataIndex: 'errorCode', key: 'errorCode', render: (value: string | null, run) =>
+    { title: t('optimization.runNo'), dataIndex: 'runNo', key: 'runNo' },
+    { title: t('optimization.trigger'), dataIndex: 'trigger', key: 'trigger', render: (value: string) => value === 'MANUAL' ? t('optimization.manual') : t('optimization.scheduled') },
+    { title: t('common.status'), dataIndex: 'state', key: 'state', render: (value: DdcAiRunState) => <Tag color={RUN_STATE_COLORS[value]}>{t(RUN_STATE_LABELS[value])}</Tag> },
+    { title: t('optimization.baseVersion'), dataIndex: 'baseVersionNo', key: 'baseVersionNo', render: (value: string | null) => value ?? '—' },
+    { title: t('optimization.sampleAndAverage'), key: 'score', render: (_, run) => `${run.sampleCount} / ${run.averageScore ?? '—'}` },
+    { title: t('optimization.producedVersion'), dataIndex: 'producedVersionNo', key: 'producedVersionNo', render: (value: string | null, run) =>
+      value ? t('optimization.producedVersionLabel', { version: value, status: run.autoPublished ? t('optimization.autoPublishedSuffix') : t('optimization.draftSuffix') }) : '—' },
+    { title: t('optimization.error'), dataIndex: 'errorCode', key: 'errorCode', render: (value: string | null, run) =>
       value ? <span title={run.errorMessage ?? undefined}>{value}</span> : '—' },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', render: (value: string) => utcTime(value) },
+    { title: t('common.createdAt'), dataIndex: 'createdAt', key: 'createdAt', render: (value: string) => utcTime(value, locale, t) },
   ]
 
   return (
     <Space orientation="vertical" size="large" className="tianshu-ai-page">
       {channelDisabled && (
-        <Alert type="warning" showIcon title="优化通道未启用：管理端未开启 egon.cola.component.tianshu.admin.ai.optimization.enabled" />
+        <Alert type="warning" showIcon title={t('optimization.channelDisabled')} />
       )}
       {conflict && (
         <Alert
           type="warning"
           showIcon
-          title="策略已被他人修改；已保留你的输入，请刷新修订后重新保存"
-          action={<Button size="small" onClick={() => { setConflict(false); void policyQuery.refetch() }}>刷新修订</Button>}
+          title={t('optimization.conflict')}
+          action={<Button size="small" onClick={() => { setConflict(false); void policyQuery.refetch() }}>{t('optimization.refreshRevision')}</Button>}
         />
       )}
-      {failure && <Alert type="error" showIcon closable title={failure} onClose={() => setFailure(undefined)} />}
+      {failure && <Alert type="error" showIcon closable title={failureText(failure.error, t)} onClose={() => setFailure(undefined)} />}
 
-      <Card title="评估快照">
+      <Card title={t('optimization.snapshot')}>
         <Descriptions
           size="small"
           column={3}
           items={[
-            { key: 'state', label: '策略状态', children: <Tag>{POLICY_STATE_LABELS[policy.state]}</Tag> },
-            { key: 'iterations', label: '迭代', children: `${policy.iterationsDone} / ${policy.maxIterations}` },
-            { key: 'failures', label: '连续失败', children: policy.consecutiveFailures },
-            { key: 'evaluatedAt', label: '最近评估', children: utcTime(policy.evaluation?.evaluatedAt) },
-            { key: 'version', label: '评估版本', children: policy.evaluation?.versionNo ?? '—' },
-            { key: 'samples', label: '样本 / 待评分', children:
+            { key: 'state', label: t('optimization.policyState'), children: <Tag>{t(POLICY_STATE_LABELS[policy.state])}</Tag> },
+            { key: 'iterations', label: t('optimization.iterations'), children: `${policy.iterationsDone} / ${policy.maxIterations}` },
+            { key: 'failures', label: t('optimization.consecutiveFailures'), children: policy.consecutiveFailures },
+            { key: 'evaluatedAt', label: t('optimization.lastEvaluated'), children: utcTime(policy.evaluation?.evaluatedAt, locale, t) },
+            { key: 'version', label: t('optimization.evaluatedVersion'), children: policy.evaluation?.versionNo ?? '—' },
+            { key: 'samples', label: t('optimization.samplesAndPending'), children:
               `${policy.evaluation?.sampleCount ?? 0} / ${policy.evaluation?.pendingJudgeCount ?? 0}` },
-            { key: 'average', label: '平均分', children: policy.evaluation?.averageScore ?? '—' },
-            { key: 'revision', label: '策略修订', children: policy.persisted ? policy.revision : '未保存（默认值）' },
-            { key: 'converged', label: '收敛时间', children: utcTime(policy.convergedAt) },
+            { key: 'average', label: t('optimization.averageScore'), children: policy.evaluation?.averageScore ?? '—' },
+            { key: 'revision', label: t('optimization.revision'), children: policy.persisted ? policy.revision : t('optimization.unsavedDefaults') },
+            { key: 'converged', label: t('optimization.convergedAt'), children: utcTime(policy.convergedAt, locale, t) },
           ]}
         />
       </Card>
 
-      <Card title="优化策略">
+      <Card title={t('optimization.policy')}>
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Space wrap>
-            <Switch aria-label="启用自动优化" checked={fields.enabled} onChange={(value) => updateField('enabled', value)} />
-            <span>启用自动优化</span>
-            <Switch aria-label="启用 LLM 评分" checked={fields.judgeEnabled} onChange={(value) => updateField('judgeEnabled', value)} />
-            <span>启用 LLM 评分</span>
-            <Switch aria-label="自动发布优化结果" checked={fields.autoPublish} onChange={(value) => updateField('autoPublish', value)} />
-            <span>自动发布优化结果</span>
+            <Switch aria-label={t('optimization.enable')} checked={fields.enabled} onChange={(value) => updateField('enabled', value)} />
+            <span>{t('optimization.enable')}</span>
+            <Switch aria-label={t('optimization.enableJudge')} checked={fields.judgeEnabled} onChange={(value) => updateField('judgeEnabled', value)} />
+            <span>{t('optimization.enableJudge')}</span>
+            <Switch aria-label={t('optimization.autoPublish')} checked={fields.autoPublish} onChange={(value) => updateField('autoPublish', value)} />
+            <span>{t('optimization.autoPublish')}</span>
           </Space>
           <Space wrap>
-            <label>分数阈值 <InputNumber aria-label="分数阈值" min={1} max={100} value={fields.scoreThreshold}
+            <label>{t('optimization.scoreThreshold')} <InputNumber aria-label={t('optimization.scoreThreshold')} min={1} max={100} value={fields.scoreThreshold}
               onChange={(value) => updateField('scoreThreshold', Number(value ?? 1))} /></label>
-            <label>最少样本 <InputNumber aria-label="最少样本" min={1} max={100000} value={fields.minSamples}
+            <label>{t('optimization.minSamples')} <InputNumber aria-label={t('optimization.minSamples')} min={1} max={100000} value={fields.minSamples}
               onChange={(value) => updateField('minSamples', Number(value ?? 1))} /></label>
-            <label>最多迭代 <InputNumber aria-label="最多迭代" min={1} max={50} value={fields.maxIterations}
+            <label>{t('optimization.maxIterations')} <InputNumber aria-label={t('optimization.maxIterations')} min={1} max={50} value={fields.maxIterations}
               onChange={(value) => updateField('maxIterations', Number(value ?? 1))} /></label>
           </Space>
           <Space wrap>
-            <label>评估窗口 <Input aria-label="评估窗口" style={{ width: 120 }} value={fields.evaluationWindow}
+            <label>{t('optimization.evaluationWindow')} <Input aria-label={t('optimization.evaluationWindow')} style={{ width: 120 }} value={fields.evaluationWindow}
               onChange={(event) => updateField('evaluationWindow', event.target.value)} /></label>
-            <label>冷却时间 <Input aria-label="冷却时间" style={{ width: 120 }} value={fields.cooldown}
+            <label>{t('optimization.cooldown')} <Input aria-label={t('optimization.cooldown')} style={{ width: 120 }} value={fields.cooldown}
               onChange={(event) => updateField('cooldown', event.target.value)} /></label>
-            <label>优化模型 <Input aria-label="优化模型别名" style={{ width: 180 }} value={fields.optimizerModelAlias}
+            <label>{t('optimization.optimizerModel')} <Input aria-label={t('optimization.optimizerAlias')} style={{ width: 180 }} value={fields.optimizerModelAlias}
               onChange={(event) => updateField('optimizerModelAlias', event.target.value)} /></label>
-            <label>评分模型 <Input aria-label="评分模型别名" style={{ width: 180 }} value={fields.judgeModelAlias}
+            <label>{t('optimization.judgeModel')} <Input aria-label={t('optimization.judgeAlias')} style={{ width: 180 }} value={fields.judgeModelAlias}
               onChange={(event) => updateField('judgeModelAlias', event.target.value)} /></label>
           </Space>
-          <Input.TextArea aria-label="优化指令" rows={3} maxLength={4096} value={fields.optimizerInstruction}
-            placeholder="附加给优化模型的约束（可选）"
+          <Input.TextArea aria-label={t('optimization.instruction')} rows={3} maxLength={4096} value={fields.optimizerInstruction}
+            placeholder={t('optimization.instructionPlaceholder')}
             onChange={(event) => updateField('optimizerInstruction', event.target.value)} />
           {errors.map((error) => <Typography.Text key={error} type="danger">{error}</Typography.Text>)}
           <Space wrap>
             <Button type="primary" loading={saveMutation.isPending} disabled={errors.length > 0}
-              onClick={() => saveMutation.mutate(false)}>保存策略</Button>
+              onClick={() => saveMutation.mutate(false)}>{t('optimization.savePolicy')}</Button>
             <Button loading={saveMutation.isPending} disabled={errors.length > 0 || runActive || !policy.persisted
               || policy.activeRunId !== null || policy.state === 'ARMED'}
-              onClick={() => saveMutation.mutate(true)}>保存并重新启用</Button>
+              onClick={() => saveMutation.mutate(true)}>{t('optimization.saveAndRearm')}</Button>
           </Space>
         </Space>
       </Card>
 
-      <Card title="手动优化">
+      <Card title={t('optimization.manualOptimization')}>
         <Space orientation="vertical" style={{ width: '100%' }}>
           <Space wrap>
-            <Input aria-label="运行备注" style={{ width: 320 }} maxLength={512} value={note} placeholder="备注（可选）"
+            <Input aria-label={t('optimization.runNote')} style={{ width: 320 }} maxLength={512} value={note} placeholder={t('optimization.notePlaceholder')}
               onChange={(event) => setNote(event.target.value)} />
             <Button type="primary" loading={triggerMutation.isPending} disabled={runActive || !policy.persisted}
-              onClick={() => triggerMutation.mutate()}>立即优化一次</Button>
+              onClick={() => triggerMutation.mutate()}>{t('optimization.runNow')}</Button>
           </Space>
           {trackedRun && (
             <Descriptions
               size="small"
               column={4}
               items={[
-                { key: 'run', label: '当前运行', children: trackedRun.runNo },
-                { key: 'state', label: '状态', children: <Tag color={RUN_STATE_COLORS[trackedRun.state]}>{trackedRun.state}</Tag> },
-                { key: 'produced', label: '产出版本', children: trackedRun.producedVersionNo ?? '—' },
-                { key: 'error', label: '错误', children: trackedRun.errorCode ?? '—' },
+                { key: 'run', label: t('optimization.currentRun'), children: trackedRun.runNo },
+                { key: 'state', label: t('common.status'), children: <Tag color={RUN_STATE_COLORS[trackedRun.state]}>{t(RUN_STATE_LABELS[trackedRun.state])}</Tag> },
+                { key: 'produced', label: t('optimization.producedVersion'), children: trackedRun.producedVersionNo ?? '—' },
+                { key: 'error', label: t('optimization.error'), children: trackedRun.errorCode ?? '—' },
               ]}
             />
           )}
         </Space>
       </Card>
 
-      <Card title="优化运行">
+      <Card title={t('optimization.runs')}>
         <Space orientation="vertical" style={{ width: '100%' }}>
           <Radio.Group
             optionType="button"
             value={runStateFilter}
             onChange={(event) => { setRunStateFilter(event.target.value); setRunPageNo(1) }}
             options={[
-              { label: '全部', value: 'ALL' },
+              { label: t('optimization.all'), value: 'ALL' },
               ...(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'SKIPPED'] as const)
-                .map((state) => ({ label: RUN_STATE_LABELS[state], value: state })),
+                .map((state) => ({ label: t(RUN_STATE_LABELS[state]), value: state })),
             ]}
           />
           <Table<DdcAiOptimizationRunResult>

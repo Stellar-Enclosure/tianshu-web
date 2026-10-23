@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -23,6 +22,9 @@ import {
 import type { TableColumnsType } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcPublishResult, DdcPublishTask } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
@@ -53,6 +55,11 @@ const statusColor = (status: string): string => {
 }
 
 export default function PublishTasksPage() {
+  const { t, locale } = usePageMessages('tianshu.publishTasks')
+  const taskStatusLabel = (status: string): string =>
+    ['PENDING', 'DISPATCHED', 'PUBLISHING', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED', 'TIMEOUT', 'UNKNOWN'].includes(status)
+      ? t(`status.${status}`)
+      : status
   const { message, modal } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
@@ -95,13 +102,13 @@ export default function PublishTasksPage() {
       { method: 'POST' },
     ),
     onSuccess: async (result) => {
-      message.success(`重试任务 ${result.changeId}：${result.status}`)
+      message.success(t('feedback.retried', { changeId: result.changeId, status: taskStatusLabel(result.status) }))
       await queryClient.invalidateQueries({
         queryKey: ['tianshu', 'publish-tasks'],
       })
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -121,15 +128,15 @@ export default function PublishTasksPage() {
 
   const confirmRetry = (task: DdcPublishTask) => {
     modal.confirm({
-      title: `确认重试任务 ${task.changeId}？`,
-      okText: '重试',
+      title: t('confirm.retry', { changeId: task.changeId }),
+      okText: t('common.retry'),
       onOk: () => retryMutation.mutateAsync(task),
     })
   }
 
   const columns: TableColumnsType<DdcPublishTask> = [
     {
-      title: 'Change ID',
+      title: t('fields.changeId'),
       dataIndex: 'changeId',
       key: 'changeId',
       render: (value: string, row) => (
@@ -139,43 +146,43 @@ export default function PublishTasksPage() {
       ),
     },
     {
-      title: '作用域',
+      title: t('fields.scope'),
       key: 'scope',
       render: (_: unknown, row) =>
         [row.bizCode, row.env, row.appCode].filter(Boolean).join(' / ') || '—',
     },
-    { title: '配置资源', dataIndex: 'resourceName', key: 'resourceName' },
-    { title: '目标版本', dataIndex: 'targetVersion', key: 'targetVersion' },
+    { title: t('fields.resourceName'), dataIndex: 'resourceName', key: 'resourceName' },
+    { title: t('fields.targetVersion'), dataIndex: 'targetVersion', key: 'targetVersion' },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={statusColor(status)}>{status}</Tag>
+        <Tag color={statusColor(status)}>{taskStatusLabel(status)}</Tag>
       ),
     },
-    { title: '尝试次数', dataIndex: 'attemptCount', key: 'attemptCount' },
+    { title: t('fields.attemptCount'), dataIndex: 'attemptCount', key: 'attemptCount' },
     {
-      title: 'ack/失败/超时',
+      title: t('fields.counts'),
       key: 'counts',
       render: (_: unknown, row) =>
         `${row.ackCount ?? 0}/${row.failedCount ?? 0}/${row.timeoutCount ?? 0}`,
     },
-    { title: '操作人', dataIndex: 'operator', key: 'operator' },
+    { title: t('fields.operator'), dataIndex: 'operator', key: 'operator' },
     {
-      title: '创建时间',
+      title: t('common.createdAt'),
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '更新时间',
+      title: t('common.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => (
@@ -186,7 +193,7 @@ export default function PublishTasksPage() {
             && retryMutation.variables?.id === row.id}
           onClick={() => confirmRetry(row)}
         >
-          重试
+          {t('common.retry')}
         </Button>
       ),
     },
@@ -195,41 +202,46 @@ export default function PublishTasksPage() {
   const detail = detailQuery.data ?? detailTask
   const detailItems = detail
     ? [
-        ['Change ID', detail.changeId],
+        [t('fields.changeId'), detail.changeId],
         [
-          '作用域',
+          t('fields.scope'),
           [detail.bizCode, detail.env, detail.appCode]
             .filter(Boolean)
             .join(' / '),
         ],
-        ['配置资源', detail.resourceName ?? '—'],
-        ['目标版本', String(detail.targetVersion ?? '—')],
-        ['发布模式', detail.publishMode ?? '—'],
-        ['状态', detail.status],
-        ['尝试次数', String(detail.attemptCount ?? '—')],
-        ['目标数', String(detail.targetCount ?? '—')],
-        ['ack 数', String(detail.ackCount ?? '—')],
-        ['失败数', String(detail.failedCount ?? '—')],
-        ['忽略数', String(detail.ignoredCount ?? '—')],
-        ['超时数', String(detail.timeoutCount ?? '—')],
-        ['超时时间(ms)', String(detail.timeoutMs ?? '—')],
-        ['失败阶段', detail.failureStage ?? '—'],
-        ['错误信息', detail.errorMessage ?? '—'],
-        ['资源校验和', detail.resourceChecksum ?? '—'],
-        ['调度时间', formatTime(detail.dispatchedAt)],
-        ['完成时间', formatTime(detail.completedAt)],
-        ['创建时间', formatTime(detail.createdAt)],
+        [t('fields.resourceName'), detail.resourceName ?? '—'],
+        [t('fields.targetVersion'), String(detail.targetVersion ?? '—')],
+        [
+          t('fields.publishMode'),
+          detail.publishMode && ['ASYNC', 'STRONG_ALL_ACK', 'STRONG_QUORUM_ACK', 'SYNC_ALL_ACK'].includes(detail.publishMode)
+            ? t(`publishMode.${detail.publishMode}`)
+            : detail.publishMode ?? '—',
+        ],
+        [t('common.status'), taskStatusLabel(detail.status)],
+        [t('fields.attemptCount'), String(detail.attemptCount ?? '—')],
+        [t('fields.targetCount'), String(detail.targetCount ?? '—')],
+        [t('fields.ackCount'), String(detail.ackCount ?? '—')],
+        [t('fields.failedCount'), String(detail.failedCount ?? '—')],
+        [t('fields.ignoredCount'), String(detail.ignoredCount ?? '—')],
+        [t('fields.timeoutCount'), String(detail.timeoutCount ?? '—')],
+        [t('fields.timeoutMs'), String(detail.timeoutMs ?? '—')],
+        [t('fields.failureStage'), detail.failureStage ?? '—'],
+        [t('fields.errorMessage'), detail.errorMessage ?? '—'],
+        [t('fields.resourceChecksum'), detail.resourceChecksum ?? '—'],
+        [t('fields.dispatchedAt'), formatTime(detail.dispatchedAt, locale)],
+        [t('fields.completedAt'), formatTime(detail.completedAt, locale)],
+        [t('common.createdAt'), formatTime(detail.createdAt, locale)],
       ].map(([label, value]) => ({ key: label, label, children: value }))
     : []
 
   return (
     <div>
       <AdminPageHeader
-        title="发布任务"
-        description="分页查看发布结果，并每 15 秒刷新当前筛选页。"
+        title={t('title')}
+        description={t('description')}
         extra={(
           <Button type="primary" onClick={() => { void tasksQuery.refetch() }}>
-            刷新当前页
+            {t('actions.refreshPage')}
           </Button>
         )}
       />
@@ -240,17 +252,17 @@ export default function PublishTasksPage() {
             onChange={(scope) => setDraft({ ...draft, ...scope })}
           />
           <Select
-            aria-label="状态"
+            aria-label={t('common.status')}
             allowClear
-            placeholder="状态"
+            placeholder={t('common.status')}
             value={draft.status || undefined}
             options={['PENDING', 'DISPATCHED', 'SUCCESS', 'FAILED', 'TIMEOUT']
-              .map((value) => ({ value, label: value }))}
+              .map((value) => ({ value, label: taskStatusLabel(value) }))}
             onChange={(status = '') => setDraft({ ...draft, status })}
             style={{ width: 150 }}
           />
           <Input
-            placeholder="Change ID"
+            placeholder={t('fields.changeId')}
             value={draft.changeId}
             onChange={(event) => setDraft({
               ...draft,
@@ -259,11 +271,11 @@ export default function PublishTasksPage() {
             onPressEnter={applyFilter}
             style={{ width: 220 }}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="任务列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={tasksQuery.isPending}
           error={tasksQuery.error}
@@ -285,7 +297,7 @@ export default function PublishTasksPage() {
               total: tasksQuery.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: pageState.onTableChange,
             }}
           />
@@ -293,7 +305,7 @@ export default function PublishTasksPage() {
       </Card>
       <Modal
         open={detailTask !== null}
-        title={`任务详情：${detailTask?.changeId ?? ''}`}
+        title={t('detail.title', { changeId: detailTask?.changeId ?? '' })}
         onCancel={() => setDetailTask(null)}
         footer={null}
         width={screens.md ? 720 : 'calc(100vw - 24px)'}

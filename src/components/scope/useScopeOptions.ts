@@ -1,3 +1,4 @@
+import {usePageMessages, type AdminTranslate} from '../../i18n/AdminI18nProvider'
 import { useQuery } from '@tanstack/react-query'
 import { ddcApi } from '../../api/client'
 
@@ -23,7 +24,7 @@ export const withParams = (
   return query === '' ? path : `${path}?${query}`
 }
 
-const toOptions = (data: unknown): ScopeOption[] => {
+const toOptions = (data: unknown, t: AdminTranslate): ScopeOption[] => {
   if (!Array.isArray(data)) return []
   return data.map((item) => {
     if (typeof item === 'string') return { value: item, label: item }
@@ -42,13 +43,15 @@ const toOptions = (data: unknown): ScopeOption[] => {
         ?? record.bizCode
         ?? '',
     )
-    return { value: code, label: name ? `${code}（${name}）` : code }
+    return { value: code, label: name ? t('scope.optionLabel', {code, name}) : code }
   })
 }
 
 export function useScopeOption(path: string) {
+  const {t} = usePageMessages('common')
   return useQuery({
     queryKey: scopeOptionKey(path),
-    queryFn: ({ signal }) => ddcApi<unknown>(path, { signal }).then(toOptions),
+    queryFn: ({ signal }) => ddcApi<unknown>(path, { signal }),
+    select: (data) => toOptions(data, t),
   })
 }

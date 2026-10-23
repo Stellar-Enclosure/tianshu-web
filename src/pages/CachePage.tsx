@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -20,6 +19,9 @@ import {
 import type { TableColumnsType } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcCacheCheckRow } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
@@ -39,6 +41,7 @@ const scopeReady = (scope: ScopeValue): boolean =>
   && scope.appCode.trim() !== ''
 
 export default function CachePage() {
+  const { t } = usePageMessages('tianshu.cache')
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -72,18 +75,18 @@ export default function CachePage() {
       { method: 'POST' },
     ),
     onSuccess: async (count) => {
-      message.success(`已重建 ${count ?? 0} 项缓存`)
+      message.success(t('feedback.rebuilt', { count: count ?? 0 }))
       await queryClient.invalidateQueries({ queryKey: ['tianshu', 'cache-check'] })
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
   const check = () => {
     const next = { ...draft }
     if (!scopeReady(next)) {
-      message.warning('请填写 bizCode / env / appCode')
+      message.warning(t('validation.scopeRequired'))
       return
     }
     setSubmitted(next)
@@ -93,12 +96,12 @@ export default function CachePage() {
   const confirmRebuild = () => {
     const scope = submitted ?? draft
     if (!scopeReady(scope)) {
-      message.warning('请先检查完整作用域')
+      message.warning(t('validation.checkScope'))
       return
     }
     modal.confirm({
-      title: '确认重建该作用域下的缓存？',
-      okText: '重建缓存',
+      title: t('confirm.rebuild'),
+      okText: t('actions.rebuild'),
       okButtonProps: { danger: true },
       onOk: () => rebuildMutation.mutateAsync(scope),
     })
@@ -110,7 +113,7 @@ export default function CachePage() {
 
   const columns: TableColumnsType<DdcCacheCheckRow> = [
     {
-      title: '配置资源',
+      title: t('fields.resourceName'),
       dataIndex: 'resourceName',
       key: 'resourceName',
       render: (value: string) => (
@@ -118,17 +121,17 @@ export default function CachePage() {
       ),
     },
     {
-      title: '一致性',
+      title: t('fields.matched'),
       dataIndex: 'matched',
       key: 'matched',
       render: (value: boolean) => (
-        <Tag color={value ? 'green' : 'red'}>{value ? '一致' : '不一致'}</Tag>
+        <Tag color={value ? 'green' : 'red'}>{value ? t('status.matched') : t('status.mismatched')}</Tag>
       ),
     },
-    { title: 'DB 版本', dataIndex: 'databaseVersion', key: 'databaseVersion' },
-    { title: 'Redis 版本', dataIndex: 'redisVersion', key: 'redisVersion' },
+    { title: t('fields.databaseVersion'), dataIndex: 'databaseVersion', key: 'databaseVersion' },
+    { title: t('fields.redisVersion'), dataIndex: 'redisVersion', key: 'redisVersion' },
     {
-      title: 'DB 值',
+      title: t('fields.databaseValue'),
       dataIndex: 'databaseValue',
       key: 'databaseValue',
       render: (value?: string) => (
@@ -138,7 +141,7 @@ export default function CachePage() {
       ),
     },
     {
-      title: 'Redis 值',
+      title: t('fields.redisValue'),
       dataIndex: 'redisValue',
       key: 'redisValue',
       render: (value?: string) => (
@@ -152,8 +155,8 @@ export default function CachePage() {
   return (
     <div>
       <AdminPageHeader
-        title="缓存管理"
-        description="按物理作用域分页检查数据库与 Redis 的缓存一致性。"
+        title={t('title')}
+        description={t('description')}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -163,14 +166,14 @@ export default function CachePage() {
             loading={checkQuery.isFetching}
             onClick={check}
           >
-            检查缓存
+            {t('actions.check')}
           </Button>
           <Button
             danger
             loading={rebuildMutation.isPending}
             onClick={confirmRebuild}
           >
-            重建缓存
+            {t('actions.rebuild')}
           </Button>
         </Space>
       </Card>
@@ -178,20 +181,20 @@ export default function CachePage() {
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           <Col xs={24} sm={12}>
             <Card size="small">
-              <Statistic title="本页一致" value={matched} />
+              <Statistic title={t('stats.matched')} value={matched} />
             </Card>
           </Col>
           <Col xs={24} sm={12}>
             <Card size="small">
-              <Statistic title="本页不一致" value={mismatched} />
+              <Statistic title={t('stats.mismatched')} value={mismatched} />
             </Card>
           </Col>
         </Row>
       )}
-      <Card size="small" title="缓存检查结果">
+      <Card size="small" title={t('list.title')}>
         {submitted === null ? (
           <Typography.Text type="secondary">
-            请选择完整作用域并执行检查。
+            {t('empty.selectScope')}
           </Typography.Text>
         ) : (
           <PageState
@@ -215,7 +218,7 @@ export default function CachePage() {
                 total: checkQuery.data?.page.total ?? 0,
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50],
-                showTotal: (total) => `共 ${total} 条`,
+                showTotal: (total) => t('common.total', { total }),
                 onChange: pageState.onTableChange,
               }}
             />

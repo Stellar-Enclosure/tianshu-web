@@ -1,3 +1,4 @@
+import {usePageMessages} from '../../i18n/AdminI18nProvider'
 import { Select, type SelectProps } from 'antd'
 import { useScopeOption } from './useScopeOptions'
 
@@ -15,7 +16,8 @@ const toValue = (values: string[]): string => values[0] ?? ''
 const filterOption: SelectProps['filterOption'] = (input, option) =>
   String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())
 
-export default function BizSelect({ value, onChange, disabled, placeholder = '请选择或输入业务域' }: Props) {
+export default function BizSelect({ value, onChange, disabled, placeholder }: Props) {
+  const {t} = usePageMessages('common')
   const query = useScopeOption('/api/v1/tianshu/bizs')
   const bizs = query.data ?? []
   return (
@@ -29,9 +31,9 @@ export default function BizSelect({ value, onChange, disabled, placeholder = '�
       filterOption={filterOption}
       loading={query.isFetching}
       disabled={disabled}
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('scope.bizPlaceholder')}
       style={{ width: '100%' }}
-      notFoundContent="无数据，可直接输入新值"
+      notFoundContent={t('scope.noOptions')}
     />
   )
 }

@@ -8,8 +8,8 @@ export const buildQuery = (values: Record<string, string | number | boolean | un
   return params.toString()
 }
 
-export const formatTime = (value?: string): string => {
+export const formatTime = (value?: string, locale = 'zh-CN'): string => {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale, { hour12: false })
 }

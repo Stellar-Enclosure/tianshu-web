@@ -155,7 +155,7 @@ describe('AiOptimizationPanel', () => {
     aiApi.getAiOptimizationRun.mockResolvedValue(run({ id: '77', state: 'RUNNING' }))
     renderPanel()
 
-    expect(await screen.findByText('RUNNING')).toBeInTheDocument()
+    expect(await screen.findByText('执行中', { selector: '.ant-tag' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: '立即优化一次' })).toBeDisabled())
     expect(screen.getByRole('button', { name: '保存并重新启用' })).toBeDisabled()
   })
@@ -174,7 +174,7 @@ describe('AiOptimizationPanel', () => {
     await waitFor(() => expect(aiApi.triggerAiOptimizationRun).toHaveBeenCalledTimes(1))
     expect(aiApi.triggerAiOptimizationRun.mock.calls[0][1]).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(aiApi.triggerAiOptimizationRun.mock.calls[0][2]).toEqual({ note: 'manual' })
-    expect(await screen.findByText('SUCCEEDED', {}, { timeout: 2000 })).toBeInTheDocument()
+    expect(await screen.findByText('成功', { selector: '.ant-tag' }, { timeout: 2000 })).toBeInTheDocument()
     const polls = aiApi.getAiOptimizationRun.mock.calls.length
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(aiApi.getAiOptimizationRun.mock.calls.length).toBe(polls)

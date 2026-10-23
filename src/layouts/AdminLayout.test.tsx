@@ -43,6 +43,7 @@ const renderLayout = (path = '/registry', embedded = false) => {
           <Route path="/" element={<AdminLayout />}>
             <Route path="registry" element={<div>注册页内容</div>} />
             <Route path="instances" element={<div>实例页内容</div>} />
+            <Route path="metadata/i18n" element={<div>页面多语种内容</div>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -98,6 +99,17 @@ describe('AdminLayout', () => {
     expect(screen.getByText('配置客户端实例')).toBeInTheDocument()
     expect(screen.getByText('配置客户端实例').closest('.ant-menu-item'))
       .toHaveClass('ant-menu-item-selected')
+  })
+
+  it('opens the enterprise metadata center while keeping the existing metadata navigation', () => {
+    setViewport(1280)
+    renderLayout('/metadata/i18n')
+
+    expect(screen.getByText('企业元数据中心').closest('.ant-menu-item'))
+      .toHaveClass('ant-menu-item-selected')
+    expect(screen.getByText('业务域')).toBeInTheDocument()
+    expect(screen.getByText('作用域绑定')).toBeInTheDocument()
+    expect(screen.getByText('页面多语种内容')).toBeInTheDocument()
   })
 
   it('offers logout from the user dropdown', async () => {

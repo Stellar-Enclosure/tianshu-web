@@ -31,6 +31,8 @@ import type {
 } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { formatAdminError } from '../i18n/errors'
 import { formatTime } from '../lib/query'
 
 type Props = { kind: DdcAiKind }
@@ -56,9 +58,6 @@ const pageNumberFromSearch = (params: URLSearchParams): number => {
 const isForbidden = (error: unknown): boolean =>
   error instanceof DdcApiError && error.status === 403
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 const initialDraft = (kind: DdcAiKind): DdcAiContent => kind === 'PROMPT'
   ? { promptText: '', nodes: [] }
   : {
@@ -70,6 +69,7 @@ const initialDraft = (kind: DdcAiKind): DdcAiContent => kind === 'PROMPT'
   }
 
 export default function AiResourcesPage({ kind }: Props) {
+  const { t, locale } = usePageMessages('tianshu.ai.resources')
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -77,7 +77,7 @@ export default function AiResourcesPage({ kind }: Props) {
   const [draftScope, setDraftScope] = useState(() => scopeFromSearch(searchParams))
   const [resourceKeyPrefix, setResourceKeyPrefix] = useState(searchParams.get('resourceKeyPrefix') ?? '')
   const [createOpen, setCreateOpen] = useState(false)
-  const [createFailure, setCreateFailure] = useState<string>()
+  const [createFailure, setCreateFailure] = useState<{ error: unknown }>()
   const [resourceKey, setResourceKey] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
@@ -109,25 +109,23 @@ export default function AiResourcesPage({ kind }: Props) {
   const createMutation = useMutation({
     mutationFn: (command: DdcAiCreateCommand) => createAiResource(command),
     onSuccess: async (result) => {
-      message.success('草稿资源已创建')
+      message.success(t('resources.created'))
       await queryClient.invalidateQueries({ queryKey: ddcAiQueryKeys.all() })
       setCreateOpen(false)
       navigate(`/ai/resources/${encodeURIComponent(result.resource.id)}`)
     },
-    onError: (error: unknown) => setCreateFailure(
-      isForbidden(error) ? '当前身份无权在此范围创建资源' : errorMessage(error),
-    ),
+    onError: (error: unknown) => setCreateFailure({ error }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (resource: DdcAiResourceSummary) =>
       deleteAiResource(resource.id, resource.revision),
     onSuccess: async () => {
-      message.success('资源已删除；历史版本仍保留')
+      message.success(t('resources.deleted'))
       await queryClient.invalidateQueries({ queryKey: ddcAiQueryKeys.all() })
     },
     onError: (error: unknown) => message.error(
-      isForbidden(error) ? '当前身份无权删除此资源' : errorMessage(error),
+      isForbidden(error) ? t('resources.deleteDenied') : formatAdminError(error, t),
     ),
   })
 
@@ -154,53 +152,53 @@ export default function AiResourcesPage({ kind }: Props) {
 
   const confirmDelete = (resource: DdcAiResourceSummary) => {
     modal.confirm({
-      title: `确认删除 ${resource.displayName}？`,
-      content: '运行读取将立即不可用，历史版本仍会保留；该资源键不会复活为旧资源。',
-      okText: '确认删除',
+      title: t('resources.deleteTitle', { name: resource.displayName }),
+      content: t('resources.deleteWarning'),
+      okText: t('resources.confirmDelete'),
       okButtonProps: { danger: true, loading: deleteMutation.isPending },
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: () => deleteMutation.mutateAsync(resource),
     })
   }
 
   const columns: TableColumnsType<DdcAiResourceSummary> = [
     {
-      title: '资源键',
+      title: t('resources.resourceKey'),
       dataIndex: 'resourceKey',
       key: 'resourceKey',
       render: (value: string, row) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: '名称', dataIndex: 'displayName', key: 'displayName' },
+    { title: t('common.name'), dataIndex: 'displayName', key: 'displayName' },
     {
-      title: '描述',
+      title: t('common.description'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
       render: (value: string) => value || '—',
     },
     {
-      title: '发布状态',
+      title: t('resources.publicationStatus'),
       key: 'currentVersionNo',
       render: (_: unknown, row) => row.currentVersionNo === null
-        ? <Tag>未发布</Tag>
-        : <Tag color="green">当前版本 {row.currentVersionNo}</Tag>,
+        ? <Tag>{t('resources.unpublished')}</Tag>
+        : <Tag color="green">{t('resources.currentVersion', { version: row.currentVersionNo })}</Tag>,
     },
     {
-      title: '最后修改',
+      title: t('resources.lastModified'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: (value: string) => formatTime(value),
+      render: (value: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       render: (_: unknown, row) => (
         <Space>
           <Button type="link" onClick={() => navigate(`/ai/resources/${encodeURIComponent(row.id)}`)}>
-            编辑
+            {t('common.edit')}
           </Button>
           <Button danger type="link" onClick={() => confirmDelete(row)}>
-            删除
+            {t('common.delete')}
           </Button>
         </Space>
       ),
@@ -233,8 +231,8 @@ export default function AiResourcesPage({ kind }: Props) {
   return (
     <Space orientation="vertical" size="large" className="tianshu-ai-page">
       <AdminPageHeader
-        title={kind === 'PROMPT' ? 'Prompt 管理' : 'Skill 管理'}
-        description="管理当前四维范围内的可编辑草稿。保存草稿不会发布运行版本。"
+        title={kind === 'PROMPT' ? t('resources.promptTitle') : t('resources.skillTitle')}
+        description={t('resources.description')}
       />
 
       <Card>
@@ -242,8 +240,8 @@ export default function AiResourcesPage({ kind }: Props) {
           <ScopeSelects value={draftScope} onChange={setDraftScope} />
           <Space wrap>
             <Input
-              aria-label="资源键前缀"
-              placeholder="资源键前缀"
+              aria-label={t('resources.keyPrefix')}
+              placeholder={t('resources.keyPrefix')}
               maxLength={128}
               value={resourceKeyPrefix}
               onChange={(event) => setResourceKeyPrefix(event.target.value)}
@@ -254,35 +252,35 @@ export default function AiResourcesPage({ kind }: Props) {
               disabled={!scopeIsComplete(draftScope)}
               onClick={() => updateUrl(draftScope, resourceKeyPrefix)}
             >
-              查询
+              {t('common.search')}
             </Button>
             <Button onClick={() => {
               setDraftScope({ ...emptyScope })
               setResourceKeyPrefix('')
               updateUrl(emptyScope, '')
             }}>
-              重置
+              {t('common.reset')}
             </Button>
           </Space>
         </Space>
       </Card>
 
       {!completeScope && (
-        <Alert type="info" showIcon title="请选择完整的业务域、命名空间、环境和应用后查询。" />
+        <Alert type="info" showIcon title={t('resources.scopeRequired')} />
       )}
       {denied && (
-        <Alert type="error" showIcon title="当前身份无权读取此范围" description={errorMessage(resourcesQuery.error)} />
+        <Alert type="error" showIcon title={t('resources.readDenied')} description={formatAdminError(resourcesQuery.error, t)} />
       )}
       {queryFailure && (
-        <Alert type="error" showIcon title="读取资源失败；结果未被当作空列表处理" description={errorMessage(resourcesQuery.error)} />
+        <Alert type="error" showIcon title={t('resources.readFailed')} description={formatAdminError(resourcesQuery.error, t)} />
       )}
 
       {completeScope && !denied && !queryFailure && (
         <Card
-          title={kind === 'PROMPT' ? 'Prompt 草稿资源' : 'Skill 草稿资源'}
+          title={kind === 'PROMPT' ? t('resources.promptDrafts') : t('resources.skillDrafts')}
           extra={(
             <Button type="primary" disabled={resourcesQuery.isPending} onClick={openCreate}>
-              {`新建 ${kind === 'PROMPT' ? 'Prompt' : 'Skill'}`}
+              {t('resources.createKind', { kind: t(`resources.kind.${kind}`) })}
             </Button>
           )}
         >
@@ -291,13 +289,13 @@ export default function AiResourcesPage({ kind }: Props) {
             columns={columns}
             dataSource={resourcesQuery.data?.records ?? []}
             loading={resourcesQuery.isPending || resourcesQuery.isFetching}
-            locale={{ emptyText: `当前范围暂无 ${kind === 'PROMPT' ? 'Prompt' : 'Skill'} 资源` }}
+            locale={{ emptyText: t('resources.emptyKind', { kind: t(`resources.kind.${kind}`) }) }}
             pagination={{
               current: pageNo,
               pageSize: PAGE_SIZE,
               total: resourcesQuery.data?.page.total ?? 0,
               showSizeChanger: false,
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: (nextPage) => updateUrl(submittedScope, params.resourceKeyPrefix ?? '', nextPage),
             }}
           />
@@ -305,61 +303,61 @@ export default function AiResourcesPage({ kind }: Props) {
       )}
 
       <Modal
-        title={`新建 ${kind === 'PROMPT' ? 'Prompt' : 'Skill'} 草稿`}
+        title={t('resources.createKindDraft', { kind: t(`resources.kind.${kind}`) })}
         open={createOpen}
         onCancel={() => {
           if (!createMutation.isPending) setCreateOpen(false)
         }}
         onOk={submitCreate}
-        okText="创建草稿"
-        cancelText="取消"
+        okText={t('resources.createDraft')}
+        cancelText={t('common.cancel')}
         confirmLoading={createMutation.isPending}
         destroyOnHidden
       >
         <Form layout="vertical">
-          {createFailure && <Alert type="error" showIcon title={createFailure} />}
-          <Form.Item label="资源键" required>
+          {createFailure && <Alert type="error" showIcon title={isForbidden(createFailure.error) ? t('resources.createDenied') : formatAdminError(createFailure.error, t)} />}
+          <Form.Item label={t('resources.resourceKey')} required>
             <Input
-              aria-label="资源键"
+              aria-label={t('resources.resourceKey')}
               maxLength={128}
               value={resourceKey}
               onChange={(event) => setResourceKey(event.target.value)}
             />
           </Form.Item>
-          <Form.Item label="显示名称" required>
+          <Form.Item label={t('resources.displayName')} required>
             <Input
-              aria-label="显示名称"
+              aria-label={t('resources.displayName')}
               maxLength={128}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
           </Form.Item>
-          <Form.Item label="描述">
+          <Form.Item label={t('common.description')}>
             <Input.TextArea
-              aria-label="描述"
+              aria-label={t('common.description')}
               maxLength={2048}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
           </Form.Item>
           {kind === 'PROMPT' ? (
-            <Form.Item label="Prompt 正文" required>
+            <Form.Item label={t('resources.promptContent')} required>
               <Input.TextArea
-                aria-label="Prompt 正文"
+                aria-label={t('resources.promptContent')}
                 rows={12}
                 value={promptText}
                 onChange={(event) => setPromptText(event.target.value)}
               />
             </Form.Item>
           ) : (
-            <Form.Item label="SKILL.md 初始正文">
+            <Form.Item label={t('resources.skillInitialContent')}>
               <Input.TextArea
-                aria-label="SKILL.md 初始正文"
+                aria-label={t('resources.skillInitialContent')}
                 rows={8}
                 value={skillFileText}
                 onChange={(event) => setSkillFileText(event.target.value)}
               />
-              <Typography.Text type="secondary">初始文件名可在编辑器中修改或删除。</Typography.Text>
+              <Typography.Text type="secondary">{t('resources.initialFileHint')}</Typography.Text>
             </Form.Item>
           )}
         </Form>

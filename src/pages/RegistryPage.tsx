@@ -1,5 +1,4 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   Button,
   Card,
@@ -16,6 +15,8 @@ import {
 import type { TableColumnsType } from 'antd'
 import { useState } from 'react'
 import { ddcPageApi } from '../api/client'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { RegistryInstance, RegistryService } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
@@ -24,6 +25,11 @@ import { buildQuery, formatTime } from '../lib/query'
 import { emptyScope } from '../lib/scopeDefaults'
 
 export default function RegistryPage() {
+  const { t, locale } = usePageMessages('tianshu.registry')
+  const instanceStatusLabel = (status?: string): string => {
+    const value = status || 'UNKNOWN'
+    return ['ONLINE', 'OFFLINE', 'UNKNOWN'].includes(value) ? t(`status.${value}`) : value
+  }
   const screens = Grid.useBreakpoint()
   const servicePage = usePageState()
   const instancePage = usePageState()
@@ -98,7 +104,7 @@ export default function RegistryPage() {
 
   const serviceColumns: TableColumnsType<RegistryService> = [
     {
-      title: '业务域 / 环境 / 应用',
+      title: t('fields.scope'),
       key: 'scope',
       render: (_: unknown, row) => (
         <Typography.Text code>
@@ -107,7 +113,7 @@ export default function RegistryPage() {
       ),
     },
     {
-      title: '类型 / 协议',
+      title: t('fields.transport'),
       key: 'transport',
       render: (_: unknown, row) => (
         <Space>
@@ -116,15 +122,15 @@ export default function RegistryPage() {
         </Space>
       ),
     },
-    { title: '服务名', dataIndex: 'serviceName', key: 'serviceName' },
+    { title: t('fields.serviceName'), dataIndex: 'serviceName', key: 'serviceName' },
     {
-      title: '分组 / 版本',
+      title: t('fields.version'),
       key: 'version',
       render: (_: unknown, row) =>
         `${row.group ?? '—'} / ${row.version ?? '—'}`,
     },
     {
-      title: 'Service ID',
+      title: t('fields.serviceId'),
       dataIndex: 'serviceId',
       key: 'serviceId',
       render: (value: string) => (
@@ -134,12 +140,12 @@ export default function RegistryPage() {
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => (
         <Button size="small" type="primary" onClick={() => openInstances(row)}>
-          查看实例
+          {t('actions.viewInstances')}
         </Button>
       ),
     },
@@ -147,23 +153,23 @@ export default function RegistryPage() {
 
   const instanceColumns: TableColumnsType<RegistryInstance> = [
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
         <Tag color={status === 'ONLINE' ? 'green' : 'default'}>
-          {status ?? 'UNKNOWN'}
+          {instanceStatusLabel(status)}
         </Tag>
       ),
     },
     {
-      title: '实例 ID',
+      title: t('fields.instanceId'),
       dataIndex: 'instanceId',
       key: 'instanceId',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     {
-      title: '地址',
+      title: t('fields.address'),
       key: 'address',
       render: (_: unknown, row) => (
         <Typography.Text code>
@@ -172,16 +178,16 @@ export default function RegistryPage() {
       ),
     },
     {
-      title: '最近心跳',
+      title: t('fields.lastHeartbeatAt'),
       dataIndex: 'lastHeartbeatAt',
       key: 'lastHeartbeatAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '过期时间',
+      title: t('fields.expireAt'),
       dataIndex: 'expireAt',
       key: 'expireAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
   ]
 
@@ -191,32 +197,32 @@ export default function RegistryPage() {
   return (
     <div>
       <AdminPageHeader
-        title="服务注册目录"
-        description="分页查看服务键，并按需加载单个服务的实例列表。"
+        title={t('title')}
+        description={t('description')}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <ScopeSelects value={draft} onChange={setDraft} />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12}>
           <Card size="small">
             <Statistic
-              title="服务总数"
+              title={t('stats.services')}
               value={servicesQuery.data?.page.total ?? 0}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12}>
           <Card size="small">
-            <Statistic title="当前实例页在线" value={onlineOnPage} />
+            <Statistic title={t('stats.onlineOnPage')} value={onlineOnPage} />
           </Card>
         </Col>
       </Row>
-      <Card className="tianshu-admin-table-card" size="small" title="服务目录">
+      <Card className="tianshu-admin-table-card" size="small" title={t('list.title')}>
         <PageState
           loading={servicesQuery.isPending}
           error={servicesQuery.error}
@@ -238,7 +244,7 @@ export default function RegistryPage() {
               total: servicesQuery.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: servicePage.onTableChange,
             }}
           />
@@ -246,7 +252,7 @@ export default function RegistryPage() {
       </Card>
       <Drawer
         open={selectedService !== null}
-        title={`${selectedService?.serviceName ?? ''} 实例`}
+        title={t('instances.title', { name: selectedService?.serviceName ?? '' })}
         onClose={closeInstances}
         size={screens.md ? 860 : '100%'}
       >
@@ -271,7 +277,7 @@ export default function RegistryPage() {
               total: instancesQuery.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: instancePage.onTableChange,
             }}
           />

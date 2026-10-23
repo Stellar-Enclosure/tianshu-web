@@ -1,3 +1,4 @@
+import {usePageMessages} from '../../i18n/AdminI18nProvider'
 import { Select, type SelectProps } from 'antd'
 import { useScopeOption, withParams } from './useScopeOptions'
 
@@ -18,7 +19,8 @@ const toValue = (values: string[]): string => values[0] ?? ''
 const filterOption: SelectProps['filterOption'] = (input, option) =>
   String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())
 
-export default function AppSelect({ value, onChange, bizCode = '', namespaceCode = '', env = '', disabled, placeholder = '请选择或输入应用' }: Props) {
+export default function AppSelect({ value, onChange, bizCode = '', namespaceCode = '', env = '', disabled, placeholder }: Props) {
+  const {t} = usePageMessages('common')
   const query = useScopeOption(withParams(
     '/api/v1/tianshu/apps',
     { bizCode, namespaceCode, env },
@@ -35,9 +37,9 @@ export default function AppSelect({ value, onChange, bizCode = '', namespaceCode
       filterOption={filterOption}
       loading={query.isFetching}
       disabled={disabled}
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('scope.appPlaceholder')}
       style={{ width: '100%' }}
-      notFoundContent="无数据，可直接输入新值"
+      notFoundContent={t('scope.noOptions')}
     />
   )
 }

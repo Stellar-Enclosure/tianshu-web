@@ -1,18 +1,22 @@
 import { Alert, Button, Card, Typography } from 'antd'
 import { useAuth } from './AuthContext'
+import {usePageMessages} from '../i18n/AdminI18nProvider'
+import {LanguageSwitcher} from '../i18n/LanguageSwitcher'
+import {formatAdminError} from '../i18n/errors'
 
 export default function LoginPage() {
   const auth = useAuth()
+  const {t} = usePageMessages('tianshu.auth')
   return (
     <div style={{ maxWidth: 480, margin: '96px auto', padding: '0 16px' }}>
-      <Card>
-        <Typography.Title level={4}>Tianshu 管理端</Typography.Title>
+      <Card extra={<LanguageSwitcher />}>
+        <Typography.Title level={4}>{t('auth.title')}</Typography.Title>
         <Typography.Paragraph type="secondary">
-          跳转到统一身份平台完成 OIDC 登录；浏览器只持有 Edge 的 HttpOnly 会话 Cookie。
+          {t('auth.description')}
         </Typography.Paragraph>
-        {auth.error && <Alert type="warning" showIcon message={auth.error} />}
+        {auth.error && <Alert type="warning" showIcon message={formatAdminError(auth.error, t)} />}
         <Button type="primary" block loading={auth.loading} onClick={() => void auth.login()}>
-          使用统一身份登录
+          {t('auth.login')}
         </Button>
       </Card>
     </div>

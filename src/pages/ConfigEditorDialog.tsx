@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { App, Form, Grid, Input, Modal, Space, Tag, Typography } from 'antd'
 import { ddcApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages, type AdminTranslate } from '../i18n/AdminI18nProvider'
 import type { DdcConfig, DdcNamespaceEnvAppBinding } from '../api/types'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
 import { scopeOptionQueryKey } from '../components/scope/useScopeOptions'
@@ -22,7 +24,7 @@ type FormValues = {
   changeReason?: string
 }
 
-const ensureBinding = async (scope: ConfigScope) => {
+const ensureBinding = async (scope: ConfigScope, t: AdminTranslate) => {
   const params = new URLSearchParams({
     bizCode: scope.bizCode,
     namespaceCode: scope.namespaceCode,
@@ -33,11 +35,12 @@ const ensureBinding = async (scope: ConfigScope) => {
     `/api/v1/tianshu/namespace-env-app-bindings?${params.toString()}`,
   )
   if (!bindings.some((binding) => binding.enabled)) {
-    throw new Error('当前命名空间、环境与应用尚未绑定，请先在命名空间管理中配置绑定')
+    throw new Error(t('validation.bindingRequired'))
   }
 }
 
 export default function ConfigEditorDialog({ open, config, defaultScope, onClose, onSaved }: Props) {
+  const { t } = usePageMessages('tianshu.configs')
   const [form] = Form.useForm<FormValues>()
   const { message } = App.useApp()
   const screens = Grid.useBreakpoint()
@@ -79,7 +82,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
       return // antd 表单校验失败已就地展示
     }
     if (scope.bizCode.trim() === '' || scope.namespaceCode.trim() === '' || scope.env.trim() === '' || scope.appCode.trim() === '') {
-      message.warning('请填写业务域 / 命名空间 / 环境 / 应用')
+      message.warning(t('validation.scopeRequired'))
       return
     }
     setSaving(true)
@@ -94,7 +97,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
           },
         })
       } else {
-        await ensureBinding(scope)
+        await ensureBinding(scope, t)
         await ddcApi('/api/v1/tianshu/configs', {
           method: 'POST',
           body: {
@@ -108,10 +111,10 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
       }
       await queryClient.invalidateQueries({ queryKey: ['tianshu', 'configs'] })
       await queryClient.invalidateQueries({ queryKey: scopeOptionQueryKey })
-      message.success('配置已保存')
+      message.success(t('feedback.saved'))
       onSaved()
     } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error))
+      message.error(formatAdminError(error, t))
     } finally {
       setSaving(false)
     }
@@ -120,10 +123,10 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
   return (
     <Modal
       open={open}
-      title={editing ? '编辑 application.yml' : '新建 application.yml'}
+      title={editing ? t('actions.edit') : t('actions.create')}
       onCancel={onClose}
       onOk={() => void save()}
-      okText="保存"
+      okText={t('common.save')}
       confirmLoading={saving}
       destroyOnHidden
       width={screens.md ? 860 : 'calc(100vw - 24px)'}
@@ -136,7 +139,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
       }}
     >
       <Form<FormValues> form={form} layout="vertical">
-        <Form.Item label="业务域 / 命名空间 / 环境 / 应用" required shouldUpdate>
+        <Form.Item label={t('fields.editorScope')} required shouldUpdate>
           {() => (
             <ScopeSelects
               value={scope}
@@ -151,7 +154,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
         </Space>
         <Form.Item
           name="content"
-          label="YAML 内容"
+          label={t('fields.content')}
           rules={[{ required: true, whitespace: true }]}
         >
           <Input.TextArea
@@ -161,13 +164,13 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
           />
         </Form.Item>
         {!editing && (
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t('common.description')}>
             <Input />
           </Form.Item>
         )}
         {editing && (
-          <Form.Item name="changeReason" label="变更原因">
-            <Input placeholder="Tianshu Admin Web update" />
+          <Form.Item name="changeReason" label={t('fields.changeReason')}>
+            <Input placeholder={t('placeholders.changeReason')} />
           </Form.Item>
         )}
       </Form>

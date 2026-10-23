@@ -117,7 +117,7 @@ const requestEnvelope = async (
     throw new DdcApiError(
       0,
       'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE',
-      '无法连接 Tianshu 管理端',
+      'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE',
     )
   }
 
@@ -132,14 +132,14 @@ const requestEnvelope = async (
   }
   if (response.status === 401) {
     unauthorizedHandler()
-    throw new DdcApiError(401, 'UNAUTHORIZED', '统一身份登录已过期，请重新登录', payload.traceId)
+    throw new DdcApiError(401, 'UNAUTHORIZED', 'UNAUTHORIZED', payload.traceId)
   }
   if (response.status === 403 && String(payload.code) === 'TIANSHU_ADMIN_TENANT_MISMATCH') {
     tenantMismatchHandler()
     throw new DdcApiError(
       403,
       'TIANSHU_ADMIN_TENANT_MISMATCH',
-      String(payload.message ?? '当前身份租户已变化，请重新加载页面'),
+      String(payload.message ?? 'TIANSHU_ADMIN_TENANT_MISMATCH'),
       payload.traceId,
     )
   }
@@ -148,7 +148,7 @@ const requestEnvelope = async (
     throw new DdcApiError(
       errorStatus,
       String(payload.code ?? errorStatus),
-      payload.message || String(payload.code) || `请求失败 (${response.status})`,
+      payload.message || String(payload.code) || `HTTP_${response.status}`,
       payload.traceId,
     )
   }
@@ -163,6 +163,27 @@ export async function ddcApi<T>(
   return payload.data as T
 }
 
+/** Completes the BFF session challenge before sending a language-management mutation. */
+export async function ddcMutationApi<T>(path: string, options: DdcRequestOptions): Promise<T> {
+  requireDdcExpectedTenantId()
+  const context = getDdcRequestContext()
+  const response = await fetch(`${import.meta.env.VITE_YUHENG_ORIGIN ?? ''}/bff/csrf`, {
+    credentials: 'include', signal: options.signal,
+  })
+  const challenge = await response.json().catch(() => ({})) as {headerName?: unknown; token?: unknown}
+  if (!isCurrentDdcSession(context.sessionGeneration) || getDdcRequestContext().tenantId !== context.tenantId) {
+    throw new DOMException('Response belongs to a previous Tianshu session', 'AbortError')
+  }
+  if (response.status === 401) unauthorizedHandler()
+  if (!response.ok || challenge.headerName !== 'X-CSRF-TOKEN'
+      || typeof challenge.token !== 'string' || challenge.token.length === 0 || /[\r\n]/.test(challenge.token)) {
+    throw new DdcApiError(response.ok ? 502 : response.status, 'TIANSHU_CSRF_UNAVAILABLE', 'TIANSHU_CSRF_UNAVAILABLE')
+  }
+  const headers = new Headers(options.headers)
+  headers.set('X-CSRF-TOKEN', challenge.token)
+  return ddcApi<T>(path, {...options, headers})
+}
+
 export async function ddcPageApi<T>(
   path: string,
   options: DdcRequestOptions = {},
@@ -174,7 +195,7 @@ export async function ddcPageApi<T>(
     throw new DdcApiError(
       500,
       'TIANSHU_INVALID_PAGE_RESPONSE',
-      '分页响应格式无效',
+      'TIANSHU_INVALID_PAGE_RESPONSE',
       payload.traceId,
     )
   }

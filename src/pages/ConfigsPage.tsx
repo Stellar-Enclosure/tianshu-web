@@ -5,7 +5,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -21,6 +20,9 @@ import {
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useMemo, useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type {
   DdcConfig,
   DdcConfigVersion,
@@ -43,6 +45,11 @@ const emptyScope: ScopeValue = {
 const configScopeLabel = (config: DdcConfig): string => `${config.bizCode} / ${config.env} / ${config.appCode}`
 
 export default function ConfigsPage() {
+  const { t, locale } = usePageMessages('tianshu.configs')
+  const taskStatusLabel = (status: string): string =>
+    ['PENDING', 'DISPATCHED', 'PUBLISHING', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED', 'TIMEOUT', 'UNKNOWN'].includes(status)
+      ? t(`status.${status}`)
+      : status
   const { message, modal } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
@@ -108,11 +115,11 @@ export default function ConfigsPage() {
       },
     ),
     onSuccess: async (result) => {
-      message.success(`发布任务 ${result.changeId}：${result.status}`)
+      message.success(t('feedback.published', { changeId: result.changeId, status: taskStatusLabel(result.status) }))
       await invalidateConfigs()
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -129,11 +136,11 @@ export default function ConfigsPage() {
           configPage.page.pageSize,
         )
       }
-      message.success('配置已删除')
+      message.success(t('feedback.deleted'))
       await invalidateConfigs()
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -153,12 +160,12 @@ export default function ConfigsPage() {
       },
     ),
     onSuccess: async () => {
-      message.success('已回滚')
+      message.success(t('feedback.rolledBack'))
       closeVersions()
       await invalidateConfigs()
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -195,18 +202,18 @@ export default function ConfigsPage() {
 
   const confirmPublish = (config: DdcConfig) => {
     modal.confirm({
-      title: `确认发布 ${config.resourceName} 当前版本？`,
-      content: `作用域：${configScopeLabel(config)}`,
-      okText: '发布',
+      title: t('confirm.publish', { name: config.resourceName }),
+      content: t('confirm.scope', { scope: configScopeLabel(config) }),
+      okText: t('actions.publish'),
       onOk: () => publishMutation.mutateAsync(config),
     })
   }
 
   const confirmDelete = (config: DdcConfig) => {
     modal.confirm({
-      title: `确认删除 ${config.resourceName}？`,
-      content: `作用域：${configScopeLabel(config)}`,
-      okText: '删除',
+      title: t('confirm.delete', { name: config.resourceName }),
+      content: t('confirm.scope', { scope: configScopeLabel(config) }),
+      okText: t('common.delete'),
       okButtonProps: { danger: true },
       onOk: () => deleteMutation.mutateAsync(config),
     })
@@ -217,9 +224,9 @@ export default function ConfigsPage() {
     version: DdcConfigVersion,
   ) => {
     modal.confirm({
-      title: `确认回滚到版本 ${version.version}？`,
-      content: `作用域：${configScopeLabel(config)}`,
-      okText: '回滚',
+      title: t('confirm.rollback', { version: version.version }),
+      content: t('confirm.scope', { scope: configScopeLabel(config) }),
+      okText: t('actions.rollback'),
       onOk: () => rollbackMutation.mutateAsync({ config, version }),
     })
   }
@@ -230,12 +237,12 @@ export default function ConfigsPage() {
 
   const configColumns: TableColumnsType<DdcConfig> = [
     {
-      title: '业务域 / 环境 / 应用',
+      title: t('fields.scope'),
       key: 'scope',
       render: (_: unknown, row) => <Typography.Text code>{configScopeLabel(row)}</Typography.Text>,
     },
     {
-      title: '配置文件',
+      title: t('fields.resourceName'),
       dataIndex: 'resourceName',
       key: 'resourceName',
       render: (value: string, row) => (
@@ -246,7 +253,7 @@ export default function ConfigsPage() {
       ),
     },
     {
-      title: '可见命名空间',
+      title: t('fields.visibleNamespaces'),
       dataIndex: 'visibleNamespaces',
       key: 'visibleNamespaces',
       render: (values: string[] = []) => (
@@ -258,7 +265,7 @@ export default function ConfigsPage() {
       ),
     },
     {
-      title: 'YAML 内容',
+      title: t('fields.content'),
       key: 'value',
       width: 360,
       ellipsis: true,
@@ -283,26 +290,26 @@ export default function ConfigsPage() {
         )
       },
     },
-    { title: '当前版本', dataIndex: 'currentVersion', key: 'currentVersion' },
+    { title: t('fields.currentVersion'), dataIndex: 'currentVersion', key: 'currentVersion' },
     {
-      title: '更新时间',
+      title: t('common.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => {
         const items: MenuProps['items'] = [
-          { key: 'versions', label: '查看版本' },
-          { key: 'delete', label: '删除', danger: true },
+          { key: 'versions', label: t('actions.viewVersions') },
+          { key: 'delete', label: t('common.delete'), danger: true },
         ]
         return (
           <Space.Compact>
             <Button size="small" onClick={() => openEditDialog(row)}>
-              编辑
+              {t('common.edit')}
             </Button>
             <Button
               size="small"
@@ -311,7 +318,7 @@ export default function ConfigsPage() {
                 && publishMutation.variables?.id === row.id}
               onClick={() => confirmPublish(row)}
             >
-              发布
+              {t('actions.publish')}
             </Button>
             <Dropdown
               trigger={['click']}
@@ -324,7 +331,7 @@ export default function ConfigsPage() {
               }}
             >
               <Button size="small">
-                更多操作 <DownOutlined />
+                {t('actions.more')} <DownOutlined />
               </Button>
             </Dropdown>
           </Space.Compact>
@@ -334,18 +341,25 @@ export default function ConfigsPage() {
   ]
 
   const versionColumns: TableColumnsType<DdcConfigVersion> = [
-    { title: '版本', dataIndex: 'version', key: 'version' },
-    { title: '类型', dataIndex: 'changeType', key: 'changeType' },
-    { title: '变更原因', dataIndex: 'changeReason', key: 'changeReason' },
-    { title: '操作人', dataIndex: 'operator', key: 'operator' },
+    { title: t('fields.version'), dataIndex: 'version', key: 'version' },
     {
-      title: '时间',
+      title: t('fields.changeType'),
+      dataIndex: 'changeType',
+      key: 'changeType',
+      render: (value?: string) => value && ['CREATE', 'UPDATE', 'DELETE', 'ROLLBACK'].includes(value)
+        ? t(`changeType.${value}`)
+        : value ?? '—',
+    },
+    { title: t('fields.changeReason'), dataIndex: 'changeReason', key: 'changeReason' },
+    { title: t('fields.operator'), dataIndex: 'operator', key: 'operator' },
+    {
+      title: t('fields.time'),
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '新值',
+      title: t('fields.newContent'),
       dataIndex: 'newContent',
       key: 'newContent',
       render: (value: string) => (
@@ -355,7 +369,7 @@ export default function ConfigsPage() {
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => versionsConfig && (
@@ -363,7 +377,7 @@ export default function ConfigsPage() {
           size="small"
           onClick={() => confirmRollback(versionsConfig, row)}
         >
-          回滚
+          {t('actions.rollback')}
         </Button>
       ),
     },
@@ -372,11 +386,11 @@ export default function ConfigsPage() {
   return (
     <div>
       <AdminPageHeader
-        title="配置中心管理"
-        description="维护 application.yml 配置、发布与版本历史。"
+        title={t('title')}
+        description={t('description')}
         extra={(
           <Button type="primary" onClick={openNewDialog}>
-            新建 application.yml
+            {t('actions.create')}
           </Button>
         )}
       />
@@ -386,11 +400,11 @@ export default function ConfigsPage() {
             value={draftScope}
             onChange={setDraftScope}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="配置列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={configsQuery.isPending}
           error={configsQuery.error}
@@ -412,7 +426,7 @@ export default function ConfigsPage() {
               total: configsQuery.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: configPage.onTableChange,
             }}
           />
@@ -427,7 +441,7 @@ export default function ConfigsPage() {
       />
       <Drawer
         open={versionsConfig !== null}
-        title="application.yml 版本历史"
+        title={t('versions.title')}
         onClose={closeVersions}
         size={screens.md ? 860 : '100%'}
       >
@@ -452,7 +466,7 @@ export default function ConfigsPage() {
               total: versionsQuery.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: versionPage.onTableChange,
             }}
           />

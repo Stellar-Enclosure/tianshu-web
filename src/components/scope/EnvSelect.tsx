@@ -1,3 +1,4 @@
+import {usePageMessages} from '../../i18n/AdminI18nProvider'
 import { Select, type SelectProps } from 'antd'
 import { useScopeOption, withParams } from './useScopeOptions'
 
@@ -17,7 +18,8 @@ const toValue = (values: string[]): string => values[0] ?? ''
 const filterOption: SelectProps['filterOption'] = (input, option) =>
   String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())
 
-export default function EnvSelect({ value, onChange, bizCode = '', namespaceCode = '', disabled, placeholder = '请选择或输入环境' }: Props) {
+export default function EnvSelect({ value, onChange, bizCode = '', namespaceCode = '', disabled, placeholder }: Props) {
+  const {t} = usePageMessages('common')
   const query = useScopeOption(withParams(
     '/api/v1/tianshu/envs',
     { bizCode, namespaceCode },
@@ -34,9 +36,9 @@ export default function EnvSelect({ value, onChange, bizCode = '', namespaceCode
       filterOption={filterOption}
       loading={query.isFetching}
       disabled={disabled}
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('scope.envPlaceholder')}
       style={{ width: '100%' }}
-      notFoundContent="无数据，可直接输入新值"
+      notFoundContent={t('scope.noOptions')}
     />
   )
 }

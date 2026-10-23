@@ -1,9 +1,10 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { Alert, Button, Card, Space, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useState } from 'react'
 import { ddcPageApi } from '../api/client'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcInstance } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
@@ -23,6 +24,11 @@ const scopeReady = (scope: ScopeValue): boolean =>
   && scope.appCode.trim() !== ''
 
 export default function InstancesPage() {
+  const { t, locale } = usePageMessages('tianshu.instances')
+  const instanceStatusLabel = (status?: string): string => {
+    const value = status || 'UNKNOWN'
+    return ['ONLINE', 'OFFLINE', 'UNKNOWN'].includes(value) ? t(`status.${value}`) : value
+  }
   const pageState = usePageState()
   const [draft, setDraft] = useState<ScopeValue>({ ...emptyScope })
   const [submitted, setSubmitted] = useState<ScopeValue | null>(null)
@@ -66,42 +72,42 @@ export default function InstancesPage() {
   const rows = instancesQuery.data?.records ?? []
   const columns: TableColumnsType<DdcInstance> = [
     {
-      title: '实例 ID',
+      title: t('fields.instanceId'),
       dataIndex: 'instanceId',
       key: 'instanceId',
       render: (value: string) => <Typography.Text code copyable={{ text: value }}>{value}</Typography.Text>,
     },
     {
-      title: '作用域',
+      title: t('fields.scope'),
       key: 'scope',
       render: (_: unknown, row) => `${row.bizCode} / ${row.env} / ${row.appCode}`,
     },
     {
-      title: '地址',
+      title: t('fields.address'),
       key: 'address',
       render: (_: unknown, row) => <Typography.Text code>{row.port == null ? row.host : `${row.host}:${row.port}`}</Typography.Text>,
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
-      render: (value: string) => <Tag color={value === 'ONLINE' ? 'green' : 'default'}>{value || 'UNKNOWN'}</Tag>,
+      render: (value: string) => <Tag color={value === 'ONLINE' ? 'green' : 'default'}>{instanceStatusLabel(value)}</Tag>,
     },
-    { title: 'Lease ID', dataIndex: 'leaseId', key: 'leaseId', render: (value?: string) => value ?? '—' },
-    { title: 'Lease 过期时间', dataIndex: 'leaseExpireAt', key: 'leaseExpireAt', render: formatTime },
-    { title: '最近心跳', dataIndex: 'lastHeartbeatAt', key: 'lastHeartbeatAt', render: formatTime },
-    { title: 'SDK 版本', dataIndex: 'sdkVersion', key: 'sdkVersion', render: (value?: string) => value ?? '—' },
-    { title: 'PID', dataIndex: 'pid', key: 'pid', render: (value?: string) => value ?? '—' },
+    { title: t('fields.leaseId'), dataIndex: 'leaseId', key: 'leaseId', render: (value?: string) => value ?? '—' },
+    { title: t('fields.leaseExpireAt'), dataIndex: 'leaseExpireAt', key: 'leaseExpireAt', render: (value?: string) => formatTime(value, locale) },
+    { title: t('fields.lastHeartbeatAt'), dataIndex: 'lastHeartbeatAt', key: 'lastHeartbeatAt', render: (value?: string) => formatTime(value, locale) },
+    { title: t('fields.sdkVersion'), dataIndex: 'sdkVersion', key: 'sdkVersion', render: (value?: string) => value ?? '—' },
+    { title: t('fields.pid'), dataIndex: 'pid', key: 'pid', render: (value?: string) => value ?? '—' },
   ]
 
   return (
     <div>
       <AdminPageHeader
-        title="配置客户端实例"
-        description="按物理作用域分页查看配置客户端租约、状态和最近心跳。"
+        title={t('title')}
+        description={t('description')}
         extra={(
           <Button disabled={submitted === null} loading={instancesQuery.isFetching} onClick={() => { void instancesQuery.refetch() }}>
-            刷新当前页
+            {t('actions.refreshPage')}
           </Button>
         )}
       />
@@ -114,27 +120,27 @@ export default function InstancesPage() {
               setDraft(scope)
             }}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
         {scopeError && (
           <Alert
             className="section-row"
             type="warning"
             showIcon
-            message="请填写 bizCode、env 和 appCode 后再查询"
+            message={t('validation.scopeRequired')}
           />
         )}
       </Card>
-      <Card size="small" title="客户端实例列表">
+      <Card size="small" title={t('list.title')}>
         {submitted === null ? (
-          <Typography.Text type="secondary">请选择完整作用域并执行查询。</Typography.Text>
+          <Typography.Text type="secondary">{t('empty.selectScope')}</Typography.Text>
         ) : (
           <PageState
             loading={instancesQuery.isPending && !instancesQuery.error}
             error={instancesQuery.error}
             empty={rows.length === 0}
-            emptyDescription="当前作用域暂无配置客户端实例"
+            emptyDescription={t('empty.instances')}
             showPartial={instancesQuery.data !== undefined}
             onRetry={() => { void instancesQuery.refetch() }}
           >
@@ -151,7 +157,7 @@ export default function InstancesPage() {
                 total: instancesQuery.data?.page.total ?? 0,
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50],
-                showTotal: (total) => `共 ${total} 条`,
+                showTotal: (total) => t('common.total', { total }),
                 onChange: pageState.onTableChange,
               }}
             />

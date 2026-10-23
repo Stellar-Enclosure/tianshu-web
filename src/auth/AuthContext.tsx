@@ -10,6 +10,7 @@ import {
 } from '../api/client'
 import type {AuthorizationBootstrap} from '../api/types'
 import {cancelAndClearDdcQueryClient} from '../query/queryClient'
+import {AdminMessageError} from '../i18n/errors'
 
 type UnsavedChangesGuard = () => Promise<boolean>
 
@@ -26,7 +27,7 @@ type AuthContextValue = {
   readonly sessionGeneration: number
   readonly authorized: boolean
   loading: boolean
-  error?: string
+  error?: Error
   registerUnsavedChangesGuard: (guard: UnsavedChangesGuard) => () => void
   login: () => Promise<void>
   logout: () => Promise<void>
@@ -39,7 +40,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
   const [bootstrap, setBootstrap] = useState<AuthorizationBootstrap>()
   const [sessionGeneration, setSessionGeneration] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<Error>()
   const unsavedChangesGuards = useRef(new Set<UnsavedChangesGuard>())
   const sessionTransitionPending = useRef(false)
   const identity = bootstrap?.user.identitySub ?? ''
@@ -61,10 +62,8 @@ export function AuthProvider({children}: {children: ReactNode}) {
         let allowed: boolean
         try {
           allowed = await guard()
-        } catch (failure) {
-          setError(failure instanceof Error
-            ? `无法确认未保存的编辑状态：${failure.message}`
-            : '无法确认未保存的编辑状态')
+        } catch {
+          setError(new AdminMessageError('auth.guardFailed'))
           return
         }
         if (!allowed) return
@@ -108,7 +107,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
         await loadBootstrap(generation)
       } catch (failure) {
         if (isCurrentDdcSession(generation)) {
-          setError(failure instanceof Error ? failure.message : '无法刷新当前租户身份')
+          setError(failure instanceof Error ? failure : new AdminMessageError('auth.tenantFailed'))
         }
       } finally {
         if (isCurrentDdcSession(generation)) setLoading(false)
@@ -126,7 +125,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
       } catch (failure) {
         if (isCurrentDdcSession(generation)) {
           setBootstrap(undefined)
-          setError(failure instanceof Error ? failure.message : '统一身份登录失败')
+          setError(failure instanceof Error ? failure : new AdminMessageError('auth.loginFailed'))
         }
       } finally {
         if (isCurrentDdcSession(generation)) setLoading(false)
@@ -142,11 +141,11 @@ export function AuthProvider({children}: {children: ReactNode}) {
       try {
         const result = await gatewayAuth.logout()
         if (isCurrentDdcSession(generation) && result.remoteState !== 'CONFIRMED') {
-          setError('本地已退出，远端令牌撤销待恢复')
+          setError(new AdminMessageError('auth.remoteLogoutPending'))
         }
       } catch (failure) {
         if (isCurrentDdcSession(generation)) {
-          setError(failure instanceof Error ? failure.message : '统一身份退出失败')
+          setError(failure instanceof Error ? failure : new AdminMessageError('auth.logoutFailed'))
         }
       } finally {
         if (isCurrentDdcSession(generation)) setLoading(false)

@@ -231,7 +231,7 @@ describe('AiVersionsPanel', () => {
     expect(historicalPrompt).toBeDisabled()
     await waitFor(() => expect(router.state.location.search).toContain('versionNo=1'))
     expect(aiApi.getAiVersion).toHaveBeenCalledWith('810001', '1', expect.objectContaining({ signal: expect.any(AbortSignal) }))
-    expect(await screen.findByText('PUBLISH')).toBeInTheDocument()
+    expect(await screen.findByText('发布', { selector: '.ant-tag' })).toBeInTheDocument()
   }, 10000)
 
   it('does not present a denied version history as empty', async () => {
@@ -311,7 +311,7 @@ describe('AiVersionsPanel', () => {
     expect(within(dialog).getByText('810001')).toBeInTheDocument()
     expect(within(dialog).getByText('2')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'complete-promotion' }))
-    expect(await screen.findByText(/PROMOTE 已提交，目标版本 4/)).toBeInTheDocument()
+    expect(await screen.findByText(/推广 已提交，目标版本 4/)).toBeInTheDocument()
     expect(screen.getByText('已创建独立目标资源')).toBeInTheDocument()
     expect(screen.getByText(/来源版本ID 9002/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '查看目标版本' }))

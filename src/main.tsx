@@ -1,7 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { App as AntdApp } from 'antd'
 import 'antd/dist/reset.css'
 import { AdminThemeProvider, injectTokens, initI18n, I18nProvider } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import App from './App'
@@ -33,9 +32,7 @@ const mount = (): void => {
       <I18nProvider>
         <AdminThemeProvider>
           <QueryClientProvider client={queryClient}>
-            <AntdApp>
-              <App />
-            </AntdApp>
+            <App />
           </QueryClientProvider>
         </AdminThemeProvider>
       </I18nProvider>

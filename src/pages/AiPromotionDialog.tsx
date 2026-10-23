@@ -31,6 +31,8 @@ import type {
   DdcAiVersionSummary,
 } from '../api/types'
 import ScopeSelects from '../components/scope/ScopeSelects'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { formatAdminError } from '../i18n/errors'
 import { uuidV7 } from '../lib/uuid'
 
 type Props = {
@@ -59,9 +61,6 @@ const sameContent = (left: DdcAiContent, right: DdcAiContent): boolean => {
   })
   return normalize(left) === normalize(right)
 }
-
-const failureMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 const isUnknownCommit = (error: unknown): boolean =>
   error instanceof DdcApiError && (error.status === 0 || error.status === 503)
@@ -99,11 +98,13 @@ export default function AiPromotionDialog({
   onPublished,
   onPendingChange = () => {},
 }: Props) {
+  const { t } = usePageMessages('tianshu.ai.editor')
   const { message } = App.useApp()
   const [targetScope, setTargetScope] = useState<DdcAiScope>({ ...emptyScope })
   const [targetResourceKey, setTargetResourceKey] = useState(sourceResource.resourceKey)
-  const [changeNote, setChangeNote] = useState(`推广版本 ${sourceVersion.versionNo}`)
-  const [failure, setFailure] = useState<string>()
+  const [changeNote, setChangeNote] = useState<string | null>(null)
+  const effectiveChangeNote = changeNote ?? t('promotion.defaultNote', { version: sourceVersion.versionNo })
+  const [failure, setFailure] = useState<{ key?: string; error?: unknown }>()
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null)
   const [verifying, setVerifying] = useState(false)
 
@@ -178,13 +179,11 @@ export default function AiPromotionDialog({
       setPendingPromotion(null)
       onPendingChange(false)
       setFailure(undefined)
-      message.success(`已复制发布目标版本 ${result.targetVersionNo}`)
+      message.success(t('promotion.published', { version: result.targetVersionNo }))
       onPublished(result)
     },
     onError: (error: unknown) => {
-      setFailure(isUnknownCommit(error)
-        ? '提交结果未知。请先核验原请求回执；重试时会复用相同请求号和内容。'
-        : failureMessage(error))
+      setFailure({ key: isUnknownCommit(error) ? 'versions.commitUnknown' : undefined, error })
       if (isUnknownCommit(error)) {
         onPendingChange(true)
       } else {
@@ -219,7 +218,7 @@ export default function AiPromotionDialog({
     },
     targetResourceKey: targetResourceKey.trim(),
     expectedTargetRevision: targetResourceResult?.resource.revision ?? null,
-    changeNote,
+    changeNote: effectiveChangeNote,
   })
 
   const submit = () => {
@@ -245,7 +244,7 @@ export default function AiPromotionDialog({
         targetResourceKey.trim(),
       )
       if (!currentTarget) {
-        setFailure('未找到发布回执或目标资源；可使用原请求号重试。')
+        setFailure({ key: 'promotion.receiptOrTargetMissing' })
         return
       }
       const audit = await pageAiPublications(currentTarget.id, {
@@ -256,15 +255,15 @@ export default function AiPromotionDialog({
       const receipt = audit.records.find((record) =>
         record.operation === 'PROMOTE' && record.sourceVersionId === sourceVersion.id)
       if (!receipt) {
-        setFailure('未找到发布回执；可使用原请求号和相同内容重试。')
+        setFailure({ key: 'versions.receiptMissing' })
         return
       }
       setPendingPromotion(null)
       onPendingChange(false)
-      message.success(`已核验目标版本 ${receipt.targetVersionNo}`)
+      message.success(t('promotion.verified', { version: receipt.targetVersionNo }))
       onPublished(receipt)
     } catch (error) {
-      setFailure(`核验请求失败：${failureMessage(error)}`)
+      setFailure({ key: 'promotion.verifyFailed', error })
     } finally {
       setVerifying(false)
     }
@@ -272,14 +271,14 @@ export default function AiPromotionDialog({
 
   return (
     <Modal
-      title={`复制发布固定来源版本 ${sourceVersion.versionNo}`}
+      title={t('promotion.title', { version: sourceVersion.versionNo })}
       open={open}
       onCancel={() => {
         if (!pendingPromotion) onCancel()
       }}
       onOk={pendingPromotion ? () => promotionMutation.mutate(pendingPromotion) : submit}
-      okText={pendingPromotion ? '使用原请求号重试' : '复制并发布'}
-      cancelText="取消"
+      okText={pendingPromotion ? t('versions.retryRequest') : t('promotion.copyAndPublish')}
+      cancelText={t('common.cancel')}
       confirmLoading={promotionMutation.isPending}
       okButtonProps={{ disabled: pendingPromotion === null && !canSubmit }}
       closable={pendingPromotion === null}
@@ -289,67 +288,71 @@ export default function AiPromotionDialog({
     >
       <Space orientation="vertical" size="middle" className="tianshu-ai-page">
         <Descriptions size="small" column={1}>
-          <Descriptions.Item label="来源资源">
+          <Descriptions.Item label={t('promotion.sourceResource')}>
             {`${sourceResource.scope.bizCode} / ${sourceResource.scope.namespaceCode} / ${sourceResource.scope.env} / ${sourceResource.scope.appCode} / ${sourceResource.resourceKey}`}
           </Descriptions.Item>
-          <Descriptions.Item label="固定来源版本">
+          <Descriptions.Item label={t('promotion.fixedSourceVersion')}>
             {`${sourceVersion.versionNo} · ${sourceVersion.displayName} · ${sourceVersion.contentSha256}`}
           </Descriptions.Item>
         </Descriptions>
-        {failure && <Alert type="error" showIcon title="复制发布状态" description={failure} />}
+        {failure && <Alert type="error" showIcon title={t('promotion.status')}
+          description={failure.key ? t(failure.key, { error: formatAdminError(failure.error, t) }) : formatAdminError(failure.error, t)} />}
         {pendingPromotion && (
           <Button onClick={() => void verifyOriginalRequest()} loading={verifying} disabled={promotionMutation.isPending}>
-            核验原请求
+            {t('versions.verifyRequest')}
           </Button>
         )}
         <Form layout="vertical">
-          <Form.Item label="目标四维范围" required>
+          <Form.Item label={t('promotion.targetScope')} required>
             <ScopeSelects
               value={targetScope}
               onChange={setTargetScope}
               disabled={pendingPromotion !== null}
             />
           </Form.Item>
-          <Form.Item label="目标资源键" required>
+          <Form.Item label={t('promotion.targetKey')} required>
             <Input
-              aria-label="目标资源键"
+              aria-label={t('promotion.targetKey')}
               maxLength={128}
               value={targetResourceKey}
               disabled={pendingPromotion !== null}
               onChange={(event) => setTargetResourceKey(event.target.value)}
             />
           </Form.Item>
-          <Form.Item label="变更说明">
+          <Form.Item label={t('promotion.changeNote')}>
             <Input.TextArea
-              aria-label="变更说明"
+              aria-label={t('promotion.changeNote')}
               maxLength={512}
-              value={pendingPromotion?.command.changeNote ?? changeNote}
+              value={pendingPromotion?.command.changeNote ?? effectiveChangeNote}
               disabled={pendingPromotion !== null}
               onChange={(event) => setChangeNote(event.target.value)}
             />
           </Form.Item>
         </Form>
-        {!scopeIsComplete(targetScope) && <Alert type="info" title="请选择完整的目标业务域、namespace、环境和应用。" />}
-        {sameTarget && <Alert type="error" title="来源与目标完整资源身份相同，不能复制发布。" />}
-        {targetPreviewLoading && <Spin size="small" description="核验目标资源" />}
+        {!scopeIsComplete(targetScope) && <Alert type="info" title={t('promotion.scopeRequired')} />}
+        {sameTarget && <Alert type="error" title={t('promotion.sameIdentity')} />}
+        {targetPreviewLoading && <Spin size="small" description={t('promotion.verifyingTarget')} />}
         {targetPreviewError && (
-          <Alert type="error" title="无法读取目标资源状态" description={failureMessage(targetPreviewError)} />
+          <Alert type="error" title={t('promotion.targetReadFailed')} description={formatAdminError(targetPreviewError, t)} />
         )}
         {targetQuery && targetLookupComplete && !targetPreviewError && !targetPreviewLoading && (
           targetResourceResult
             ? <Alert
                 type="info"
-                title={`目标revision ${targetResourceResult.resource.revision}；当前版本 ${targetResourceResult.resource.currentVersionNo ?? '尚未发布'}`}
+                title={t('promotion.targetRevision', {
+                  revision: targetResourceResult.resource.revision,
+                  version: targetResourceResult.resource.currentVersionNo ?? t('editor.unpublished'),
+                })}
                 description={targetCurrentVersionNo === null
-                  ? '目标尚无已发布版本；推广不会覆盖现有草稿。'
+                  ? t('promotion.targetUnpublished')
                   : targetHasUnpublishedChanges
-                    ? '目标存在未发布草稿；本次推广会保留该草稿。'
-                    : '目标草稿与当前发布版本一致；本次推广不会改写草稿。'}
+                    ? t('promotion.targetHasDraft')
+                    : t('promotion.targetDraftUnchanged')}
               />
-            : <Alert type="info" title="目标资源不存在；将以空revision条件创建目标并发布固定来源版本。" />
+            : <Alert type="info" title={t('promotion.newTarget')} />
         )}
         <Typography.Text type="secondary">
-          服务端从不可变来源版本复制内容；页面不下载正文后再上传，来源资源与来源草稿保持不变。
+          {t('promotion.immutableSourceHint')}
         </Typography.Text>
       </Space>
     </Modal>

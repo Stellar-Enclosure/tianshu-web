@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -20,6 +19,9 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcBiz } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import { scopeOptionQueryKey } from '../components/scope/useScopeOptions'
@@ -34,6 +36,7 @@ type BizFormValues = {
 }
 
 export default function BizsPage() {
+  const { t, locale } = usePageMessages('tianshu.bizs')
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -76,10 +79,10 @@ export default function BizsPage() {
     onSuccess: async () => {
       setOpen(false)
       await invalidate()
-      message.success('业务域保存成功')
+      message.success(t('feedback.saved'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -91,10 +94,10 @@ export default function BizsPage() {
       ),
     onSuccess: async () => {
       await invalidate()
-      message.success('业务域状态更新完成')
+      message.success(t('feedback.statusUpdated'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -113,10 +116,10 @@ export default function BizsPage() {
         )
       }
       await invalidate()
-      message.success('业务域删除完成')
+      message.success(t('feedback.deleted'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -159,15 +162,15 @@ export default function BizsPage() {
 
   const columns = [
     {
-      title: '业务域编码',
+      title: t('fields.bizCode'),
       dataIndex: 'bizCode',
       key: 'bizCode',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: '名称', dataIndex: 'bizName', key: 'bizName' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
+    { title: t('common.name'), dataIndex: 'bizName', key: 'bizName' },
+    { title: t('common.description'), dataIndex: 'description', key: 'description' },
     {
-      title: '启用',
+      title: t('common.enabled'),
       key: 'enabled',
       render: (_: unknown, row: DdcBiz) => (
         <Switch
@@ -179,24 +182,24 @@ export default function BizsPage() {
       ),
     },
     {
-      title: '更新时间',
+      title: t('common.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right' as const,
       render: (_: unknown, row: DdcBiz) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           <Popconfirm
-            title={`确认删除业务域 ${row.bizCode}？`}
+            title={t('confirm.delete', { code: row.bizCode })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
             <Button size="small" danger loading={removeMutation.isPending
-              && removeMutation.variables?.id === row.id}>删除</Button>
+              && removeMutation.variables?.id === row.id}>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -206,24 +209,24 @@ export default function BizsPage() {
   return (
     <div>
       <AdminPageHeader
-        title="业务域管理"
-        description="维护 Tianshu 业务域及其启用状态。"
-        extra={<Button type="primary" onClick={openCreate}>新建业务域</Button>}
+        title={t('title')}
+        description={t('description')}
+        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Input
-            placeholder="名称模糊查询"
+            placeholder={t('filters.keyword')}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onPressEnter={applyFilter}
             style={{ width: 220 }}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="业务域列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={query.isPending}
           error={query.error}
@@ -243,7 +246,7 @@ export default function BizsPage() {
               total: query.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: pageState.onTableChange,
             }}
           />
@@ -251,10 +254,10 @@ export default function BizsPage() {
       </Card>
       <Modal
         open={open}
-        title={editing ? '编辑业务域' : '新建业务域'}
+        title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
         onOk={() => { void save() }}
-        okText="保存"
+        okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
@@ -265,18 +268,18 @@ export default function BizsPage() {
         >
           <Form.Item
             name="bizCode"
-            label="业务域编码"
+            label={t('fields.bizCode')}
             rules={[{ required: true }]}
           >
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="bizName" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="bizName" label={t('common.name')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t('common.description')}>
             <Input />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('common.enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

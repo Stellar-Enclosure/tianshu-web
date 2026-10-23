@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -20,6 +19,9 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcApp } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import BizSelect from '../components/scope/BizSelect'
@@ -48,6 +50,7 @@ type AppFormValues = {
 }
 
 export default function AppsPage() {
+  const { t, locale } = usePageMessages('tianshu.apps')
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -93,10 +96,10 @@ export default function AppsPage() {
     onSuccess: async () => {
       setOpen(false)
       await invalidate()
-      message.success('应用保存成功')
+      message.success(t('feedback.saved'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -108,10 +111,10 @@ export default function AppsPage() {
       ),
     onSuccess: async () => {
       await invalidate()
-      message.success('应用状态更新完成')
+      message.success(t('feedback.statusUpdated'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -129,10 +132,10 @@ export default function AppsPage() {
         )
       }
       await invalidate()
-      message.success('应用删除完成')
+      message.success(t('feedback.deleted'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -180,21 +183,21 @@ export default function AppsPage() {
 
   const columns = [
     {
-      title: '业务域',
+      title: t('fields.bizCode'),
       dataIndex: 'bizCode',
       key: 'bizCode',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     {
-      title: '应用编码',
+      title: t('fields.appCode'),
       dataIndex: 'appCode',
       key: 'appCode',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: '应用名称', dataIndex: 'appName', key: 'appName' },
-    { title: '负责人', dataIndex: 'owner', key: 'owner' },
+    { title: t('fields.appName'), dataIndex: 'appName', key: 'appName' },
+    { title: t('fields.owner'), dataIndex: 'owner', key: 'owner' },
     {
-      title: '启用',
+      title: t('common.enabled'),
       key: 'enabled',
       render: (_: unknown, row: DdcApp) => (
         <Switch
@@ -206,23 +209,23 @@ export default function AppsPage() {
       ),
     },
     {
-      title: '更新时间',
+      title: t('common.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right' as const,
       render: (_: unknown, row: DdcApp) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           <Popconfirm
-            title={`确认删除应用 ${row.appCode}？`}
+            title={t('confirm.delete', { code: row.appCode })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger>删除</Button>
+            <Button size="small" danger>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -232,9 +235,9 @@ export default function AppsPage() {
   return (
     <div>
       <AdminPageHeader
-        title="应用管理"
-        description="维护业务域中的应用及其作用域可见性。"
-        extra={<Button type="primary" onClick={openCreate}>新建应用</Button>}
+        title={t('title')}
+        description={t('description')}
+        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -244,7 +247,7 @@ export default function AppsPage() {
             onChange={(scope) => setDraft({ ...draft, ...scope })}
           />
           <Input
-            placeholder="appCode / 名称模糊查询"
+            placeholder={t('filters.keyword')}
             value={draft.keyword}
             onChange={(event) => setDraft({
               ...draft,
@@ -253,11 +256,11 @@ export default function AppsPage() {
             onPressEnter={applyFilter}
             style={{ width: 220 }}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="应用列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={query.isPending}
           error={query.error}
@@ -277,7 +280,7 @@ export default function AppsPage() {
               total: query.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: pageState.onTableChange,
             }}
           />
@@ -285,10 +288,10 @@ export default function AppsPage() {
       </Card>
       <Modal
         open={open}
-        title={editing ? '编辑应用' : '新建应用'}
+        title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
         onOk={() => { void save() }}
-        okText="保存"
+        okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
@@ -297,22 +300,22 @@ export default function AppsPage() {
           layout="vertical"
           initialValues={{ enabled: true }}
         >
-          <Form.Item name="bizCode" label="业务域" rules={[{ required: true }]}>
+          <Form.Item name="bizCode" label={t('fields.bizCode')} rules={[{ required: true }]}>
             <BizSelect disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="appCode" label="应用编码" rules={[{ required: true }]}>
+          <Form.Item name="appCode" label={t('fields.appCode')} rules={[{ required: true }]}>
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="appName" label="应用名称" rules={[{ required: true }]}>
+          <Form.Item name="appName" label={t('fields.appName')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="owner" label="负责人">
-            <Input placeholder="local-admin" />
+          <Form.Item name="owner" label={t('fields.owner')}>
+            <Input placeholder={t('placeholders.owner')} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t('common.description')}>
             <Input />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('common.enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

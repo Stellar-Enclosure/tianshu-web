@@ -10,7 +10,10 @@ import {
   LogoutOutlined,
   PartitionOutlined,
 } from '@ant-design/icons'
-import { Badge } from 'antd'
+import { Badge, Space } from 'antd'
+import {useMemo} from 'react'
+import {usePageMessages, type AdminTranslate} from '../i18n/AdminI18nProvider'
+import {LanguageSwitcher} from '../i18n/LanguageSwitcher'
 import {
   EnterpriseLayout,
   type EnterpriseLayoutConfig,
@@ -26,42 +29,51 @@ interface WujieRuntimeWindow extends Window {
 
 // 平台自己的导航树；shared 只负责左侧递归树的渲染与高亮。
 const navigation: readonly EnterpriseNavigationItem[] = [
-  { key: 'ai-resources', label: 'AI 资源管理', icon: <FileTextOutlined />, children: [
-    { key: 'ai-prompts', label: 'Prompt 管理', path: '/ai/prompts', icon: <FileTextOutlined /> },
-    { key: 'ai-skills', label: 'Skill 管理', path: '/ai/skills', icon: <FileTextOutlined /> },
+  { key: 'ai-resources', label: 'nav.aiResources', icon: <FileTextOutlined />, children: [
+    { key: 'ai-prompts', label: 'nav.prompts', path: '/ai/prompts', icon: <FileTextOutlined /> },
+    { key: 'ai-skills', label: 'nav.skills', path: '/ai/skills', icon: <FileTextOutlined /> },
   ] },
-  { key: 'runtime', label: '运行状态', icon: <ClusterOutlined />, children: [
-    { key: 'registry', label: '服务注册', path: '/registry', icon: <ClusterOutlined /> },
-    { key: 'instances', label: '配置客户端实例', path: '/instances', icon: <ClusterOutlined /> },
-    { key: 'publish-tasks', label: '发布任务', path: '/publish-tasks', icon: <DeploymentUnitOutlined /> },
-    { key: 'cache', label: '缓存', path: '/cache', icon: <DatabaseOutlined /> },
+  { key: 'runtime', label: 'nav.runtime', icon: <ClusterOutlined />, children: [
+    { key: 'registry', label: 'nav.registry', path: '/registry', icon: <ClusterOutlined /> },
+    { key: 'instances', label: 'nav.instances', path: '/instances', icon: <ClusterOutlined /> },
+    { key: 'publish-tasks', label: 'nav.publishTasks', path: '/publish-tasks', icon: <DeploymentUnitOutlined /> },
+    { key: 'cache', label: 'nav.cache', path: '/cache', icon: <DatabaseOutlined /> },
   ] },
-  { key: 'configuration', label: '配置管理', icon: <FileTextOutlined />, children: [
-    { key: 'configs', label: '配置资源', path: '/configs', icon: <FileTextOutlined /> },
+  { key: 'configuration', label: 'nav.configuration', icon: <FileTextOutlined />, children: [
+    { key: 'configs', label: 'nav.configs', path: '/configs', icon: <FileTextOutlined /> },
   ] },
-  { key: 'metadata', label: '元数据管理', icon: <PartitionOutlined />, children: [
-    { key: 'bizs', label: '业务域', path: '/bizs', icon: <PartitionOutlined /> },
-    { key: 'envs', label: '环境', path: '/envs', icon: <CloudOutlined /> },
-    { key: 'apps', label: '应用', path: '/apps', icon: <AppstoreOutlined /> },
-    { key: 'namespaces', label: '命名空间', path: '/namespaces', icon: <ApartmentOutlined /> },
-    { key: 'bindings', label: '作用域绑定', path: '/bindings', icon: <LinkOutlined /> },
+  { key: 'metadata', label: 'nav.metadata', icon: <PartitionOutlined />, children: [
+    { key: 'i18n', label: 'nav.i18n', path: '/metadata/i18n', icon: <FileTextOutlined /> },
+    { key: 'bizs', label: 'nav.bizs', path: '/bizs', icon: <PartitionOutlined /> },
+    { key: 'envs', label: 'nav.envs', path: '/envs', icon: <CloudOutlined /> },
+    { key: 'apps', label: 'nav.apps', path: '/apps', icon: <AppstoreOutlined /> },
+    { key: 'namespaces', label: 'nav.namespaces', path: '/namespaces', icon: <ApartmentOutlined /> },
+    { key: 'bindings', label: 'nav.bindings', path: '/bindings', icon: <LinkOutlined /> },
   ] },
 ]
 
+const translateNavigation = (items: readonly EnterpriseNavigationItem[], t: AdminTranslate): EnterpriseNavigationItem[] =>
+  items.map((item) => ({...item, label: t(item.label),
+    ...(item.children ? {children: translateNavigation(item.children, t)} : {})}))
+
 export default function AdminLayout() {
+  const {t} = usePageMessages('common')
+  const translatedNavigation = useMemo(() => translateNavigation(navigation, t), [t])
   const { identity, logout } = useAuth()
   const embedded = (window as WujieRuntimeWindow).$wujie?.props?.embedded === true
 
   const config: EnterpriseLayoutConfig = {
-    platformName: 'Tianshu Admin',
-    navigation,
-    actions: <Badge status="success" text="Tianshu 已连接" />,
+    platformName: t('shell.platformName'),
+    navigation: translatedNavigation,
+    labels: {mainMenu: t('shell.mainMenu'), userMenu: t('shell.userMenu'),
+      openNavigation: t('shell.openNavigation'), version: t('shell.version')},
+    actions: <Space><LanguageSwitcher /><Badge status="success" text={t('shell.connected')} /></Space>,
     user: {
       name: identity,
       menu: [
         {
           key: 'logout',
-          label: '退出登录',
+          label: t('shell.logout'),
           icon: <LogoutOutlined />,
           onClick: () => {
             void logout()

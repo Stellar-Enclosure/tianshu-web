@@ -121,7 +121,7 @@ describe('PublishTasksPage', () => {
     )
 
     fireEvent.mouseDown(screen.getByLabelText('状态'))
-    const failedOptions = await screen.findAllByText('FAILED')
+    const failedOptions = await screen.findAllByText('失败')
     fireEvent.click(failedOptions[failedOptions.length - 1])
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(

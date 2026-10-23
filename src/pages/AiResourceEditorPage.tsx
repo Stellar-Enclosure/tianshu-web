@@ -34,6 +34,8 @@ import type {
 } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AdminPageHeader from '../components/page/AdminPageHeader'
+import { usePageMessages, type AdminTranslate } from '../i18n/AdminI18nProvider'
+import { formatAdminError } from '../i18n/errors'
 import { formatTime } from '../lib/query'
 import AiFeedbackPanel from './AiFeedbackPanel'
 import AiOptimizationPanel from './AiOptimizationPanel'
@@ -95,10 +97,10 @@ const replaceSubtreePrefix = (nodes: DdcAiNode[], from: string, to: string): Ddc
 const subTreeSize = (nodes: DdcAiNode[], path: string): number =>
   nodes.filter((node) => node.path === path || node.path.startsWith(`${path}/`)).length
 
-const treeData = (nodes: DdcAiNode[]): DataNode[] => {
+const treeData = (nodes: DdcAiNode[], t: AdminTranslate): DataNode[] => {
   const root: DataNode = {
     key: '',
-    title: <span><FolderOpenOutlined aria-hidden="true" /> Skill 文件根目录（目录）</span>,
+    title: <span><FolderOpenOutlined aria-hidden="true" /> {t('editor.skillRoot')}</span>,
     isLeaf: false,
     children: [],
   }
@@ -112,7 +114,7 @@ const treeData = (nodes: DdcAiNode[]): DataNode[] => {
           {node.nodeType === 'DIRECTORY'
             ? <FolderOutlined aria-hidden="true" />
             : <FileTextOutlined aria-hidden="true" />}
-          {' '}{basename(node.path)}（{node.nodeType === 'DIRECTORY' ? '目录' : '文件'}）
+          {' '}{t('editor.treeNode', { name: basename(node.path), type: node.nodeType === 'DIRECTORY' ? t('editor.directory') : t('editor.file') })}
         </span>
       ),
       isLeaf: node.nodeType === 'FILE',
@@ -142,12 +144,13 @@ const toListUrl = (resource: DdcAiResourceSummary): string => {
   return `/ai/${resource.kind === 'PROMPT' ? 'prompts' : 'skills'}?${query}`
 }
 
-const failureText = (error: unknown): string => {
-  if (error instanceof DdcApiError && error.status === 403) return '当前身份无权执行此操作'
-  return error instanceof Error ? error.message : String(error)
+const failureText = (error: unknown, t: AdminTranslate): string => {
+  if (error instanceof DdcApiError && error.status === 403) return t('editor.operationDenied')
+  return formatAdminError(error, t)
 }
 
 export default function AiResourceEditorPage() {
+  const { t, locale } = usePageMessages('tianshu.ai.editor')
   const { message, modal } = App.useApp()
   const { error: authError, registerUnsavedChangesGuard } = useAuth()
   const { id = '' } = useParams()
@@ -164,7 +167,7 @@ export default function AiResourceEditorPage() {
   const [baseline, setBaseline] = useState<DdcAiResourceResult | null>(null)
   const [buffer, setBuffer] = useState<DraftBuffer | null>(null)
   const [selectedPath, setSelectedPath] = useState('')
-  const [saveFailure, setSaveFailure] = useState<string>()
+  const [saveFailure, setSaveFailure] = useState<{ error: unknown }>()
   const [conflict, setConflict] = useState(false)
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(null)
   const [nodePathValue, setNodePathValue] = useState('')
@@ -245,7 +248,7 @@ export default function AiResourceEditorPage() {
       setSaveFailure(undefined)
       queryClient.setQueryData(queryKey, result)
       await queryClient.invalidateQueries({ queryKey: ddcAiQueryKeys.all() })
-      message.success('草稿已保存；当前发布版本未改变')
+      message.success(t('editor.savedNotice'))
     },
     onError: async (error: unknown) => {
       if (error instanceof DdcApiError && error.status === 409) {
@@ -253,7 +256,7 @@ export default function AiResourceEditorPage() {
         setSaveFailure(undefined)
         await resourceQuery.refetch()
       } else {
-        setSaveFailure(failureText(error))
+        setSaveFailure({ error })
       }
     },
   })
@@ -264,23 +267,23 @@ export default function AiResourceEditorPage() {
       const current = baseline?.resource
       if (!current) return
       await queryClient.invalidateQueries({ queryKey: ddcAiQueryKeys.all() })
-      message.success('资源已删除；历史版本仍会保留')
+      message.success(t('editor.deletedNotice'))
       navigate(toListUrl(current))
     },
-    onError: (error: unknown) => setSaveFailure(failureText(error)),
+    onError: (error: unknown) => setSaveFailure({ error }),
   })
 
   const savedBuffer = baseline ? toBuffer(baseline) : null
   const selectedNode = buffer?.draft.nodes.find((node) => node.path === selectedPath)
   const directories = buffer?.draft.nodes.filter((node) => node.nodeType === 'DIRECTORY') ?? []
-  const visibleTree = useMemo(() => treeData(buffer?.draft.nodes ?? []), [buffer?.draft.nodes])
+  const visibleTree = useMemo(() => treeData(buffer?.draft.nodes ?? [], t), [buffer?.draft.nodes, t])
   const writable = baseline !== null && buffer !== null && !resourceQuery.isError
 
   const selectedParent = selectedNode?.nodeType === 'DIRECTORY'
     ? selectedNode.path
     : parentPath(selectedPath)
   const openNewNode = (operation: 'new-file' | 'new-directory') => {
-    const label = operation === 'new-file' ? '新建文件.txt' : '新建目录'
+    const label = operation === 'new-file' ? t('editor.newFileDefaultName') : t('editor.newDirectoryDefaultName')
     let path = selectedParent ? `${selectedParent}/${label}` : label
     let suffix = 1
     while (buffer?.draft.nodes.some((node) => node.path === path)) {
@@ -309,11 +312,11 @@ export default function AiResourceEditorPage() {
     const path = selectedNode.path
     const affectedCount = subTreeSize(buffer?.draft.nodes ?? [], path)
     modal.confirm({
-      title: `删除 ${path}？`,
-      content: `将删除 ${affectedCount} 个节点及其草稿文本；此操作需保存后生效。`,
-      okText: '确认删除节点',
+      title: t('editor.deleteNodeTitle', { path }),
+      content: t('editor.deleteNodeWarning', { count: affectedCount }),
+      okText: t('editor.confirmDeleteNode'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: () => {
         updateDraft((current) => ({
           ...current,
@@ -338,7 +341,7 @@ export default function AiResourceEditorPage() {
       const parent = parentPath(path)
       if (!isValidPath(path) || !isDirectory(nextNodes, parent)
           || nextNodes.some((node) => node.path === path)) {
-        message.error('路径无效、父目录不存在或目标路径已存在')
+        message.error(t('editor.invalidNewPath'))
         return
       }
       nextNodes = [...nextNodes, {
@@ -360,7 +363,7 @@ export default function AiResourceEditorPage() {
       const hasDuplicates = new Set(transformedPaths).size !== transformedPaths.length
       if (!isValidPath(path) || !isDirectory(nextNodes, parent) || movingIntoOwnSubtree
           || hasDuplicates || otherPaths.has(path)) {
-        message.error('新路径无效、父目录不存在或会与现有节点冲突')
+        message.error(t('editor.invalidRenamePath'))
         return
       }
       nextNodes = transformed
@@ -376,7 +379,7 @@ export default function AiResourceEditorPage() {
       const hasDuplicates = new Set(transformed.map((node) => node.path)).size !== transformed.length
       if (!isValidPath(path) || !targetNode || targetNode.nodeType !== 'DIRECTORY'
           || movingIntoOwnSubtree || hasDuplicates) {
-        message.error('目标目录无效、移动会形成环或目标路径已存在')
+        message.error(t('editor.invalidMoveTarget'))
         return
       }
       nextNodes = transformed
@@ -396,13 +399,13 @@ export default function AiResourceEditorPage() {
   const confirmDeleteResource = () => {
     if (!baseline) return
     modal.confirm({
-      title: `确认删除 ${baseline.resource.displayName}？`,
+      title: t('editor.deleteTitle', { name: baseline.resource.displayName }),
       content: isDirty
-        ? '运行读取将立即不可用，历史版本仍会保留；当前未保存的本地修改也会丢弃。'
-        : '运行读取将立即不可用，历史版本仍会保留。删除后将返回资源列表。',
-      okText: '确认删除',
+        ? t('editor.deleteDirtyWarning')
+        : t('editor.deleteWarning'),
+      okText: t('editor.confirmDelete'),
       okButtonProps: { danger: true, loading: deleteMutation.isPending },
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: () => deleteMutation.mutateAsync(baseline.resource),
     })
   }
@@ -414,13 +417,13 @@ export default function AiResourceEditorPage() {
   }
 
   if (resourceQuery.isPending && !resourceQuery.data) {
-    return <Spin fullscreen description="读取 AI 草稿" />
+    return <Spin fullscreen description={t('editor.loading')} />
   }
   if (resourceQuery.isError && (!resourceQuery.data || !baseline || !buffer)) {
-    return <Alert type="error" showIcon title="无法读取此资源" description={failureText(resourceQuery.error)} />
+    return <Alert type="error" showIcon title={t('editor.readFailed')} description={failureText(resourceQuery.error, t)} />
   }
   if (!resourceQuery.data || !baseline || !buffer) {
-    return <Alert type="error" showIcon title="资源内容不可用" />
+    return <Alert type="error" showIcon title={t('editor.unavailable')} />
   }
 
   const resource = resourceQuery.data.resource
@@ -440,13 +443,13 @@ export default function AiResourceEditorPage() {
   return (
     <Space orientation="vertical" size="large" className="tianshu-ai-page">
       <AdminPageHeader
-        title={resource.kind === 'PROMPT' ? 'Prompt 草稿编辑' : 'Skill 草稿编辑'}
-        description="编辑区仅保存纯文本草稿；发布版本只读，草稿保存不会切换运行版本。"
+        title={resource.kind === 'PROMPT' ? t('editor.promptTitle') : t('editor.skillTitle')}
+        description={t('editor.description')}
         extra={(
           <Space wrap>
-            <Button onClick={() => navigate(toListUrl(resource))}>返回资源列表</Button>
+            <Button onClick={() => navigate(toListUrl(resource))}>{t('editor.backToList')}</Button>
             <Button danger onClick={confirmDeleteResource} disabled={!writable || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || deleteMutation.isPending}>
-              删除资源
+              {t('editor.deleteResource')}
             </Button>
           </Space>
         )}
@@ -454,29 +457,29 @@ export default function AiResourceEditorPage() {
 
       <Card>
         <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }}>
-          <Descriptions.Item label="资源键"><Typography.Text code>{resource.resourceKey}</Typography.Text></Descriptions.Item>
-          <Descriptions.Item label="完整范围">
+          <Descriptions.Item label={t('editor.resourceKey')}><Typography.Text code>{resource.resourceKey}</Typography.Text></Descriptions.Item>
+          <Descriptions.Item label={t('editor.fullScope')}>
             {`${resource.scope.bizCode} / ${resource.scope.namespaceCode} / ${resource.scope.env} / ${resource.scope.appCode}`}
           </Descriptions.Item>
-          <Descriptions.Item label="当前发布版本">
-            {resource.currentVersionNo ?? '尚未发布'}
+          <Descriptions.Item label={t('editor.currentVersion')}>
+            {resource.currentVersionNo ?? t('editor.unpublished')}
           </Descriptions.Item>
-          <Descriptions.Item label="草稿修订">{baseline.resource.revision}</Descriptions.Item>
-          <Descriptions.Item label="最后修改">{formatTime(resource.updatedAt)}</Descriptions.Item>
-          <Descriptions.Item label="草稿状态">
-            {isDirty ? <Typography.Text type="warning">未保存</Typography.Text> : '已保存'}
+          <Descriptions.Item label={t('editor.draftRevision')}>{baseline.resource.revision}</Descriptions.Item>
+          <Descriptions.Item label={t('editor.lastModified')}>{formatTime(resource.updatedAt, locale)}</Descriptions.Item>
+          <Descriptions.Item label={t('editor.draftStatus')}>
+            {isDirty ? <Typography.Text type="warning">{t('editor.unsaved')}</Typography.Text> : t('editor.saved')}
           </Descriptions.Item>
         </Descriptions>
       </Card>
 
-      {saveFailure && <Alert type="error" showIcon title="草稿操作失败" description={saveFailure} />}
-      {authError && <Alert type="error" showIcon title="身份会话操作失败" description={authError} />}
+      {saveFailure && <Alert type="error" showIcon title={t('editor.operationFailed')} description={failureText(saveFailure.error, t)} />}
+      {authError && <Alert type="error" showIcon title={t('editor.sessionFailed')} description={formatAdminError(authError, t)} />}
       {resourceQuery.isError && resourceQuery.data && (
         <Alert
           type="warning"
           showIcon
-          title="当前会话无法刷新资源状态；本地编辑仍保留"
-          description={failureText(resourceQuery.error)}
+          title={t('editor.refreshUnavailable')}
+          description={failureText(resourceQuery.error, t)}
         />
       )}
       {conflict && (
@@ -484,11 +487,11 @@ export default function AiResourceEditorPage() {
           type="warning"
           showIcon
           title={canAcknowledgeConflict
-            ? `服务器修订 ${latestServer.resource.revision} 已加载；本地草稿仍保留`
-            : '保存冲突；正在读取服务器最新草稿'}
+            ? t('editor.conflictLoaded', { revision: latestServer.resource.revision })
+            : t('editor.loadingConflict')}
           description={(
             <div className="tianshu-ai-conflict">
-              <Typography.Paragraph>请手工比较两份内容。确认后才会使用新修订号保存本地编辑。</Typography.Paragraph>
+              <Typography.Paragraph>{t('editor.compareInstructions')}</Typography.Paragraph>
               <pre>{latestServer.draft.promptText ?? latestServer.draft.nodes.map((node) => `${node.nodeType} ${node.path}\n${node.content ?? ''}`).join('\n')}</pre>
               <Button
                 type="primary"
@@ -498,7 +501,7 @@ export default function AiResourceEditorPage() {
                   setConflict(false)
                 }}
               >
-                我已比较，继续保存本地修改
+                {t('editor.acknowledgeConflict')}
               </Button>
             </div>
           )}
@@ -506,7 +509,7 @@ export default function AiResourceEditorPage() {
       )}
 
       {(isDirty || pendingVersionOperation) && activeTab === 'versions' && (
-        <Alert type="info" showIcon title="本地草稿仍保留；切换历史版本不会覆盖未保存编辑。" />
+        <Alert type="info" showIcon title={t('editor.historyPreservesDraft')} />
       )}
       <Tabs
         activeKey={activeTab}
@@ -514,13 +517,13 @@ export default function AiResourceEditorPage() {
         items={[
           {
             key: 'draft',
-            label: '草稿编辑',
+            label: t('editor.draftTab'),
             children: (
               <Space orientation="vertical" size="large" className="tianshu-ai-page">
                 {resource.kind === 'PROMPT' ? (
-                  <Card title="Prompt 正文（纯文本）">
+                  <Card title={t('editor.promptPlainText')}>
                     <Input.TextArea
-                      aria-label="Prompt 正文"
+                      aria-label={t('editor.promptContent')}
                       rows={20}
                       value={buffer.draft.promptText ?? ''}
                       onChange={(event) => updateDraft((current) => ({
@@ -531,16 +534,16 @@ export default function AiResourceEditorPage() {
                   </Card>
                 ) : (
                   <div className="tianshu-ai-skill-editor">
-                    <Card title="Skill 文件树" className="tianshu-ai-skill-editor__tree">
+                    <Card title={t('editor.skillTree')} className="tianshu-ai-skill-editor__tree">
                       <Space wrap className="tianshu-ai-skill-editor__actions">
-                        <Button onClick={() => openNewNode('new-file')}>新增文件</Button>
-                        <Button onClick={() => openNewNode('new-directory')}>新增目录</Button>
-                        <Button onClick={openMove} disabled={!selectedNode || selectedNode.path === ''}>移动</Button>
-                        <Button onClick={openRename} disabled={!selectedNode || selectedNode.path === ''}>重命名</Button>
-                        <Button danger onClick={confirmDeleteNode} disabled={!selectedNode || selectedNode.path === ''}>删除节点</Button>
+                        <Button onClick={() => openNewNode('new-file')}>{t('editor.addFile')}</Button>
+                        <Button onClick={() => openNewNode('new-directory')}>{t('editor.addDirectory')}</Button>
+                        <Button onClick={openMove} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.move')}</Button>
+                        <Button onClick={openRename} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.rename')}</Button>
+                        <Button danger onClick={confirmDeleteNode} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.deleteNode')}</Button>
                       </Space>
                       <Tree
-                        aria-label="Skill 文件树"
+                        aria-label={t('editor.skillTree')}
                         treeData={visibleTree}
                         selectedKeys={selectedPath ? [selectedPath] : []}
                         defaultExpandAll
@@ -552,19 +555,19 @@ export default function AiResourceEditorPage() {
                             return
                           }
                           modal.confirm({
-                            title: '当前草稿有未保存修改',
-                            content: '继续切换文件会保留当前本地树和文本，确认后再选择其他节点。',
-                            okText: '保留并切换',
-                            cancelText: '留在当前文件',
+                            title: t('editor.unsavedChanges'),
+                            content: t('editor.switchFileWarning'),
+                            okText: t('editor.keepAndSwitch'),
+                            cancelText: t('editor.stayInFile'),
                             onOk: () => setSelectedPath(nextPath),
                           })
                         }}
                       />
                     </Card>
-                    <Card title={selectedNode?.nodeType === 'FILE' ? selectedPath : '选择一个文本文件'} className="tianshu-ai-skill-editor__content">
+                    <Card title={selectedNode?.nodeType === 'FILE' ? selectedPath : t('editor.selectFile')} className="tianshu-ai-skill-editor__content">
                       {selectedNode?.nodeType === 'FILE' ? (
                         <Input.TextArea
-                          aria-label={`文件正文: ${selectedPath}`}
+                          aria-label={t('editor.fileContent', { path: selectedPath })}
                           rows={22}
                           value={selectedNode.content ?? ''}
                           onChange={(event) => updateDraft((current) => ({
@@ -578,7 +581,7 @@ export default function AiResourceEditorPage() {
                           }))}
                         />
                       ) : (
-                        <Typography.Text type="secondary">目录没有正文；所有文件均作为原始文本编辑。</Typography.Text>
+                        <Typography.Text type="secondary">{t('editor.directoryHint')}</Typography.Text>
                       )}
                     </Card>
                   </div>
@@ -590,7 +593,7 @@ export default function AiResourceEditorPage() {
                     disabled={!isDirty || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || conflict}
                     loading={saveMutation.isPending}
                   >
-                    保存草稿
+                    {t('editor.saveDraft')}
                   </Button>
                   <Button
                     disabled={!isDirty || saveMutation.isPending}
@@ -598,10 +601,10 @@ export default function AiResourceEditorPage() {
                       const saved = savedBuffer
                       if (!saved) return
                       modal.confirm({
-                        title: '放弃本地草稿修改？',
-                        content: '本地未保存的内容将被服务器草稿替换。',
-                        okText: '放弃修改',
-                        cancelText: '继续编辑',
+                        title: t('editor.discardTitle'),
+                        content: t('editor.discardWarning'),
+                        okText: t('editor.discardChanges'),
+                        cancelText: t('editor.continueEditing'),
                         onOk: () => {
                           setBuffer(saved)
                           setBaseline(resourceQuery.data)
@@ -611,7 +614,7 @@ export default function AiResourceEditorPage() {
                       })
                     }}
                   >
-                    放弃修改
+                    {t('editor.discardChanges')}
                   </Button>
                 </Space>
               </Space>
@@ -619,7 +622,7 @@ export default function AiResourceEditorPage() {
           },
           {
             key: 'versions',
-            label: '版本与发布',
+            label: t('editor.versionsTab'),
             children: (
               <AiVersionsPanel
                 resource={resource}
@@ -632,7 +635,7 @@ export default function AiResourceEditorPage() {
           },
           {
             key: 'optimization',
-            label: '反馈与优化',
+            label: t('editor.optimizationTab'),
             children: (
               <Space orientation="vertical" size="large" className="tianshu-ai-page">
                 <AiOptimizationPanel resourceId={resource.id} />
@@ -644,40 +647,40 @@ export default function AiResourceEditorPage() {
       />
 
       <Modal
-        title={nodeDialog?.operation === 'new-file' ? '新增文本文件'
-          : nodeDialog?.operation === 'new-directory' ? '新增目录'
-            : nodeDialog?.operation === 'rename' ? '重命名节点' : '移动节点'}
+        title={nodeDialog?.operation === 'new-file' ? t('editor.addTextFile')
+          : nodeDialog?.operation === 'new-directory' ? t('editor.addDirectory')
+            : nodeDialog?.operation === 'rename' ? t('editor.renameNode') : t('editor.moveNode')}
         open={nodeDialog !== null}
         onCancel={() => setNodeDialog(null)}
         onOk={applyNodeOperation}
         okText={nodeDialog?.operation === 'new-file' || nodeDialog?.operation === 'new-directory'
-          ? '确认新增' : nodeDialog?.operation === 'rename' ? '确认重命名' : '确认移动'}
-        cancelText="取消"
+          ? t('editor.confirmAdd') : nodeDialog?.operation === 'rename' ? t('editor.confirmRename') : t('editor.confirmMove')}
+        cancelText={t('common.cancel')}
         destroyOnHidden
       >
         {nodeDialog?.operation === 'move' ? (
           <Form layout="vertical">
-            <Form.Item label="目标目录路径" help="留空表示根目录；目标必须是现有目录。">
+            <Form.Item label={t('editor.targetDirectory')} help={t('editor.targetDirectoryHint')}>
               <Input
-                aria-label="目标目录路径"
+                aria-label={t('editor.targetDirectory')}
                 value={targetDirectoryPath}
                 onChange={(event) => setTargetDirectoryPath(event.target.value)}
               />
             </Form.Item>
             <Typography.Text type="secondary">
-              可选目录：{directories.map((directory) => directory.path || '（根目录）').join('、')}
+              {t('editor.availableDirectories', { directories: directories.map((directory) => directory.path || t('editor.rootDirectory')).join(t('editor.directorySeparator')) })}
             </Typography.Text>
           </Form>
         ) : (
           <Form layout="vertical">
             <Form.Item
-              label={nodeDialog?.operation === 'rename' ? '新路径'
-                : nodeDialog?.operation === 'new-directory' ? '目录路径' : '文件路径'}
+              label={nodeDialog?.operation === 'rename' ? t('editor.newPath')
+                : nodeDialog?.operation === 'new-directory' ? t('editor.directoryPath') : t('editor.filePath')}
               required
             >
               <Input
-                aria-label={nodeDialog?.operation === 'rename' ? '新路径'
-                  : nodeDialog?.operation === 'new-directory' ? '目录路径' : '文件路径'}
+                aria-label={nodeDialog?.operation === 'rename' ? t('editor.newPath')
+                  : nodeDialog?.operation === 'new-directory' ? t('editor.directoryPath') : t('editor.filePath')}
                 maxLength={1024}
                 value={nodePathValue}
                 onChange={(event) => setNodePathValue(event.target.value)}
@@ -688,32 +691,32 @@ export default function AiResourceEditorPage() {
       </Modal>
 
       <Modal
-        title={pendingVersionOperation ? '发布操作尚未核验' : '当前草稿尚未保存'}
+        title={pendingVersionOperation ? t('editor.publicationUnverified') : t('editor.draftUnsaved')}
         open={logoutConfirmationOpen}
         onOk={() => answerLogoutConfirmation(!pendingVersionOperation)}
         onCancel={() => answerLogoutConfirmation(false)}
-        okText={pendingVersionOperation ? '返回并继续核验' : '放弃修改并继续'}
-        cancelText={pendingVersionOperation ? '留在当前会话' : '继续编辑'}
+        okText={pendingVersionOperation ? t('editor.returnToVerification') : t('editor.discardAndContinue')}
+        cancelText={pendingVersionOperation ? t('editor.stayInSession') : t('editor.continueEditing')}
       >
         {pendingVersionOperation
-          ? '发布操作结果尚未确认。请先核验原请求或使用原请求号重试；此时不能切换身份会话。'
-          : '继续会切换或清除当前身份会话，本地未保存内容将丢失。是否确认？'}
+          ? t('editor.pendingSessionWarning')
+          : t('editor.leaveSessionWarning')}
       </Modal>
 
       <Modal
-        title={pendingVersionOperation ? '发布操作尚未核验' : '离开编辑页？'}
+        title={pendingVersionOperation ? t('editor.publicationUnverified') : t('editor.leaveTitle')}
         open={blocker.state === 'blocked'}
         onOk={() => {
           if (!pendingVersionOperation) blocker.proceed?.()
         }}
         onCancel={() => blocker.reset?.()}
         okButtonProps={{ disabled: pendingVersionOperation }}
-        okText="离开并放弃本地修改"
-        cancelText={pendingVersionOperation ? '返回核验' : '继续编辑'}
+        okText={t('editor.leaveAndDiscard')}
+        cancelText={pendingVersionOperation ? t('editor.verifyBeforeLeaving') : t('editor.continueEditing')}
       >
         {pendingVersionOperation
-          ? '发布结果未知；先核验原请求回执或使用原请求号重试。'
-          : '当前草稿尚未保存，离开会丢弃本地修改。'}
+          ? t('editor.pendingLeaveWarning')
+          : t('editor.unsavedLeaveWarning')}
       </Modal>
     </Space>
   )

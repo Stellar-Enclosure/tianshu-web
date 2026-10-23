@@ -12,6 +12,7 @@ Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制�
 | `/registry` | 按完整作用域查询服务目录，并按需加载实例 |
 | `/configs`、`/publish-tasks` | YAML 编辑、版本、发布/回滚及发布任务结果/重试 |
 | `/bizs`、`/apps`、`/namespaces`、`/envs`、`/bindings` | 作用域元数据与绑定维护 |
+| `/metadata/i18n` | 企业元数据中心：页面/公共多语种词条编辑、保存草稿、发布及语言包渲染预览 |
 | `/instances`、`/cache` | 配置客户端实例、缓存一致性检查与重建 |
 | `/ai/prompts`、`/ai/skills`、`/ai/resources/:id` | Prompt/Skill 草稿与文件编辑、版本发布/回滚、跨 scope 推广、使用反馈与优化 |
 
@@ -27,6 +28,34 @@ Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制�
 因此控制台不持有 Access Token，也不发送 `Authorization` 头；API 请求通过 Edge 会话与 BFF Token
 Relay。身份与权限来自 `GET /api/v1/tianshu/auth/bootstrap`，只有响应授予 `TIANSHU_READ` 时
 控制台才算已授权。收到 401 时清空本地 bootstrap 状态并回到登录页。
+
+## 页面多语种管理
+
+进入“元数据管理 → 企业元数据中心”，选择已有的业务域、命名空间、环境和应用绑定。
+新建页面时设置稳定的 `pageCode`（如 `order.list`），以 `common` 创建同作用域的公共文案。
+在词条表格维护 key、默认语言和其他语言；其他语言留空表示使用默认语言文案。
+保存草稿后再发布，消费端只能读取发布结果。版本冲突会保留本地编辑，需要显式重新加载服务器草稿后再处理。
+
+已发布预览调用真实语言包接口并通过共享 SDK 渲染，同时展示对应 JSON。
+Tianshu 现有全部业务路由、导航、登录提示、表单、弹窗和通用组件文案已接入中心。
+界面语言切换会先加载目标语言包再切换，不重建页面、不清空未保存输入。语言包使用服务端固定的
+管理台作用域，不受业务列表筛选条件影响。
+
+点击“查看管理台语言包”即可定位该作用域。业务域、应用、命名空间、环境及绑定就绪后，
+“初始化默认文案”只创建并发布缺失语言包，保留所有已有页面和草稿。初始化之前由中心返回内置默认词条；
+企业已发布配置优先。发布该作用域的文案后会刷新当前界面，也可使用顶部的文案刷新按钮。
+登录前只读取中心公开的静态登录包，不读取任何企业数据。
+管理端需要 `TIANSHU_READ`，编辑需要 `TIANSHU_WRITE`，发布需要 `TIANSHU_PUBLISH`；
+这些 OAuth scopes 和对应授权能力须同时授予，Edge 的登录 scope 配置也须包含所需操作。
+仅消费语言包的业务前端可使用独立的 `TIANSHU_I18N_READ`，不必授予配置管理权限。
+
+详细接口、迁移和消费规则见服务端 [页面多语种使用说明](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/docs/page-i18n.md)，
+共享加载器的接入示例见 [Web SDK](https://github.com/Stellar-Enclosure/web-sdk/tree/main/packages/stellar-enclosure-web-shared)。
+本地验证必须使用同次变更构建的 Web SDK；可使用下方仓库 README 中的本地消费验证流程。
+
+默认词条唯一源位于服务端 `src/main/resources/i18n/tianshu-admin`，前端生产代码不打包业务词典。
+`src/test/i18nCatalogs.json` 仅用于测试，通过 `node scripts/sync-i18n-fixtures.mjs` 同步；
+同级存在服务端仓库时，可用 `node scripts/sync-i18n-fixtures.mjs --check` 检查一致性。
 
 ## 开发
 

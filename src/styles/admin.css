@@ -34,6 +34,24 @@
   white-space: pre-wrap;
 }
 
+.tianshu-i18n-entries {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tianshu-i18n-entries th,
+.tianshu-i18n-entries td {
+  padding: 12px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tianshu-i18n-entries th {
+  background: var(--ant-color-fill-alter, #fafafa);
+}
+
 @media (max-width: 768px) {
   .tianshu-ai-skill-editor {
     grid-template-columns: minmax(0, 1fr);

@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -23,6 +22,9 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type {
   DdcApp,
   DdcEnv,
@@ -48,6 +50,7 @@ type NamespaceFormValues = {
 }
 
 export default function NamespacesPage() {
+  const { t, locale } = usePageMessages('tianshu.namespaces')
   const { message } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
@@ -102,10 +105,10 @@ export default function NamespacesPage() {
     onSuccess: async () => {
       setOpen(false)
       await invalidate()
-      message.success('命名空间保存成功')
+      message.success(t('feedback.saved'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -119,10 +122,10 @@ export default function NamespacesPage() {
     ),
     onSuccess: async () => {
       await invalidate()
-      message.success('命名空间状态更新完成')
+      message.success(t('feedback.statusUpdated'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -140,10 +143,10 @@ export default function NamespacesPage() {
         )
       }
       await invalidate()
-      message.success('命名空间删除完成')
+      message.success(t('feedback.deleted'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -225,7 +228,7 @@ export default function NamespacesPage() {
       setBindingDraft(nextDraft)
     } catch (error) {
       closeBindings()
-      message.error(error instanceof Error ? error.message : String(error))
+      message.error(formatAdminError(error, t))
     } finally {
       setBindingLoading(false)
     }
@@ -268,10 +271,10 @@ export default function NamespacesPage() {
           )))
       })
       await Promise.all(changes)
-      message.success('命名空间绑定保存成功')
+      message.success(t('feedback.bindingsSaved'))
       closeBindings()
     } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error))
+      message.error(formatAdminError(error, t))
     } finally {
       setBindingSaving(false)
     }
@@ -279,21 +282,21 @@ export default function NamespacesPage() {
 
   const columns = [
     {
-      title: '业务域',
+      title: t('fields.bizCode'),
       dataIndex: 'bizCode',
       key: 'bizCode',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     {
-      title: '编码',
+      title: t('fields.namespaceCode'),
       dataIndex: 'namespaceCode',
       key: 'namespaceCode',
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: '名称', dataIndex: 'namespace', key: 'namespace' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
+    { title: t('common.name'), dataIndex: 'namespace', key: 'namespace' },
+    { title: t('common.description'), dataIndex: 'description', key: 'description' },
     {
-      title: '启用',
+      title: t('common.enabled'),
       key: 'enabled',
       render: (_: unknown, row: DdcNamespace) => (
         <Switch
@@ -305,26 +308,26 @@ export default function NamespacesPage() {
       ),
     },
     {
-      title: '更新时间',
+      title: t('common.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
-      render: formatTime,
+      render: (value?: string) => formatTime(value, locale),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       fixed: 'right' as const,
       render: (_: unknown, row: DdcNamespace) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           <Button size="small" onClick={() => { void openBindings(row) }}>
-            管理绑定
+            {t('actions.manageBindings')}
           </Button>
           <Popconfirm
-            title={`确认删除命名空间 ${row.namespace}？`}
+            title={t('confirm.delete', { name: row.namespace })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger>删除</Button>
+            <Button size="small" danger>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -334,10 +337,10 @@ export default function NamespacesPage() {
   return (
     <div>
       <AdminPageHeader
-        title="命名空间管理"
-        description="维护命名空间及其环境与应用可见性绑定。"
+        title={t('title')}
+        description={t('description')}
         extra={(
-          <Button type="primary" onClick={openCreate}>新建命名空间</Button>
+          <Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>
         )}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -349,7 +352,7 @@ export default function NamespacesPage() {
             />
           </span>
           <Input
-            placeholder="命名空间模糊查询"
+            placeholder={t('filters.keyword')}
             value={draft.keyword}
             onChange={(event) => setDraft({
               ...draft,
@@ -358,11 +361,11 @@ export default function NamespacesPage() {
             onPressEnter={applyFilter}
             style={{ width: 220 }}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="命名空间列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={query.isPending}
           error={query.error}
@@ -382,7 +385,7 @@ export default function NamespacesPage() {
               total: query.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: pageState.onTableChange,
             }}
           />
@@ -390,10 +393,10 @@ export default function NamespacesPage() {
       </Card>
       <Modal
         open={open}
-        title={editing ? '编辑命名空间' : '新建命名空间'}
+        title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
         onOk={() => { void save() }}
-        okText="保存"
+        okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
@@ -402,26 +405,26 @@ export default function NamespacesPage() {
           layout="vertical"
           initialValues={{ enabled: true }}
         >
-          <Form.Item name="bizCode" label="业务域" rules={[{ required: true }]}>
+          <Form.Item name="bizCode" label={t('fields.bizCode')} rules={[{ required: true }]}>
             <BizSelect disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="namespaceCode" label="编码" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} placeholder="全局唯一" />
+          <Form.Item name="namespaceCode" label={t('fields.namespaceCode')} rules={[{ required: true }]}>
+            <Input disabled={Boolean(editing)} placeholder={t('placeholders.namespaceCode')} />
           </Form.Item>
-          <Form.Item name="namespace" label="名称" rules={[{ required: true }]}>
+          <Form.Item name="namespace" label={t('common.name')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="描述">
+          <Form.Item name="description" label={t('common.description')}>
             <Input />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('common.enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
       <Drawer
         open={bindingNamespace !== null}
-        title={`管理绑定：${bindingNamespace?.bizCode ?? ''}/${bindingNamespace?.namespaceCode ?? ''}`}
+        title={t('bindings.title', { bizCode: bindingNamespace?.bizCode ?? '', namespaceCode: bindingNamespace?.namespaceCode ?? '' })}
         size={screens.md ? 860 : '100%'}
         onClose={closeBindings}
         extra={(
@@ -430,7 +433,7 @@ export default function NamespacesPage() {
             loading={bindingSaving}
             onClick={() => { void saveBindings() }}
           >
-            保存绑定
+            {t('actions.saveBindings')}
           </Button>
         )}
       >
@@ -443,7 +446,7 @@ export default function NamespacesPage() {
           scroll={{ x: 'max-content' }}
           columns={[
             {
-              title: '环境',
+              title: t('fields.env'),
               dataIndex: 'envCode',
               key: 'envCode',
               width: 160,
@@ -452,7 +455,7 @@ export default function NamespacesPage() {
               ),
             },
             {
-              title: '可见应用（多选）',
+              title: t('fields.visibleApps'),
               key: 'apps',
               width: 520,
               render: (_: unknown, env: DdcEnv) => (
@@ -464,7 +467,7 @@ export default function NamespacesPage() {
                   value={bindingDraft[env.envCode] ?? []}
                   options={bindingApps.map((app) => ({
                     value: app.appCode,
-                    label: `${app.appCode}（${app.appName}）`,
+                    label: t('bindings.appLabel', { code: app.appCode, name: app.appName }),
                   }))}
                   onChange={(values) => setBindingDraft((current) => ({
                     ...current,

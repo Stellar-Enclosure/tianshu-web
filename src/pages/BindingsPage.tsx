@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { PageState } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   App,
   Button,
@@ -20,6 +19,9 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
+import { formatAdminError } from '../i18n/errors'
+import { usePageMessages } from '../i18n/AdminI18nProvider'
+import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type {
   DdcNamespaceEnvAppBinding,
   DdcNamespaceEnvAppBindingRequest,
@@ -43,6 +45,7 @@ const emptyFilter: BindingFilter = {
 }
 
 export default function BindingsPage() {
+  const { t } = usePageMessages('tianshu.bindings')
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -87,10 +90,10 @@ export default function BindingsPage() {
       setOpen(false)
       setEditing(null)
       await invalidate()
-      message.success('作用域绑定保存成功')
+      message.success(t('feedback.saved'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -104,10 +107,10 @@ export default function BindingsPage() {
         pageState.onTableChange(pageState.page.pageNo - 1, pageState.page.pageSize)
       }
       await invalidate()
-      message.success('作用域绑定删除完成')
+      message.success(t('feedback.deleted'))
     },
     onError: (error) => message.error(
-      error instanceof Error ? error.message : String(error),
+      formatAdminError(error, t),
     ),
   })
 
@@ -158,42 +161,42 @@ export default function BindingsPage() {
   return (
     <div>
       <AdminPageHeader
-        title="作用域绑定管理"
-        description="维护命名空间、环境与应用之间的可见性绑定。"
-        extra={<Button type="primary" onClick={openCreate}>新增绑定</Button>}
+        title={t('title')}
+        description={t('description')}
+        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Input
-            aria-label="业务域"
-            placeholder="业务域"
+            aria-label={t('fields.bizCode')}
+            placeholder={t('fields.bizCode')}
             value={draft.bizCode}
             onChange={(event) => setDraft({ ...draft, bizCode: event.target.value })}
           />
           <Input
-            aria-label="命名空间编码"
-            placeholder="命名空间编码"
+            aria-label={t('fields.namespaceCode')}
+            placeholder={t('fields.namespaceCode')}
             value={draft.namespaceCode}
             onChange={(event) => setDraft({ ...draft, namespaceCode: event.target.value })}
           />
           <Input
-            aria-label="环境"
-            placeholder="环境"
+            aria-label={t('fields.env')}
+            placeholder={t('fields.env')}
             value={draft.env}
             onChange={(event) => setDraft({ ...draft, env: event.target.value })}
           />
           <Input
-            aria-label="应用编码"
-            placeholder="应用编码"
+            aria-label={t('fields.appCode')}
+            placeholder={t('fields.appCode')}
             value={draft.appCode}
             onChange={(event) => setDraft({ ...draft, appCode: event.target.value })}
             onPressEnter={applyFilter}
           />
-          <Button type="primary" onClick={applyFilter}>查询</Button>
-          <Button onClick={resetFilter}>重置</Button>
+          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+          <Button onClick={resetFilter}>{t('common.reset')}</Button>
         </Space>
       </Card>
-      <Card size="small" title="绑定列表">
+      <Card size="small" title={t('list.title')}>
         <PageState
           loading={query.isPending}
           error={query.error}
@@ -207,24 +210,24 @@ export default function BindingsPage() {
             loading={query.isFetching}
             dataSource={query.data?.records ?? []}
             columns={[
-              { title: '业务域', dataIndex: 'bizCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: '命名空间', dataIndex: 'namespaceCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: '环境', dataIndex: 'env' },
-              { title: '应用', dataIndex: 'appCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: '应用名称', dataIndex: 'appName' },
-              { title: '启用', dataIndex: 'enabled', render: (enabled: boolean) => <Switch checked={enabled} disabled /> },
+              { title: t('fields.bizCode'), dataIndex: 'bizCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+              { title: t('fields.namespace'), dataIndex: 'namespaceCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+              { title: t('fields.env'), dataIndex: 'env' },
+              { title: t('fields.app'), dataIndex: 'appCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+              { title: t('fields.appName'), dataIndex: 'appName' },
+              { title: t('common.enabled'), dataIndex: 'enabled', render: (enabled: boolean) => <Switch checked={enabled} disabled /> },
               {
-                title: '操作',
+                title: t('common.actions'),
                 fixed: 'right' as const,
                 render: (_value: unknown, item: DdcNamespaceEnvAppBinding) => (
                   <Space>
-                    <Button size="small" onClick={() => openEdit(item)}>编辑</Button>
+                    <Button size="small" onClick={() => openEdit(item)}>{t('common.edit')}</Button>
                     <Popconfirm
-                      title={`确认删除 ${item.namespaceCode}/${item.env}/${item.appCode} 绑定？`}
+                      title={t('confirm.delete', { namespaceCode: item.namespaceCode, env: item.env, appCode: item.appCode })}
                       onConfirm={() => removeMutation.mutate(item)}
                     >
                       <Button size="small" danger loading={removeMutation.isPending && removeMutation.variables?.id === item.id}>
-                        删除
+                        {t('common.delete')}
                       </Button>
                     </Popconfirm>
                   </Space>
@@ -237,7 +240,7 @@ export default function BindingsPage() {
               total: query.data?.page.total ?? 0,
               showSizeChanger: true,
               pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('common.total', { total }),
               onChange: pageState.onTableChange,
             }}
           />
@@ -245,10 +248,10 @@ export default function BindingsPage() {
       </Card>
       <Modal
         open={open}
-        title={editing ? '编辑作用域绑定' : '新增作用域绑定'}
+        title={editing ? t('dialog.edit') : t('dialog.create')}
         onCancel={() => { setOpen(false); setEditing(null) }}
         onOk={() => { void save() }}
-        okText="保存"
+        okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
@@ -257,19 +260,19 @@ export default function BindingsPage() {
           layout="vertical"
           initialValues={{ enabled: true }}
         >
-          <Form.Item name="bizCode" label="业务域" rules={[{ required: true }]}>
+          <Form.Item name="bizCode" label={t('fields.bizCode')} rules={[{ required: true }]}>
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="namespaceCode" label="命名空间编码" rules={[{ required: true }]}>
+          <Form.Item name="namespaceCode" label={t('fields.namespaceCode')} rules={[{ required: true }]}>
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="env" label="环境" rules={[{ required: true }]}>
+          <Form.Item name="env" label={t('fields.env')} rules={[{ required: true }]}>
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="appCode" label="应用编码" rules={[{ required: true }]}>
+          <Form.Item name="appCode" label={t('fields.appCode')} rules={[{ required: true }]}>
             <Input disabled={Boolean(editing)} />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('common.enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
