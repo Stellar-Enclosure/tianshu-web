@@ -1,3 +1,6 @@
+import {FieldCatalogProvider} from './permissions/FieldCatalog'
+import {RequirePermission} from './permissions/access'
+import ResourceMetadataPage from './pages/ResourceMetadataPage'
 import {useEffect, useState} from 'react'
 import {createBrowserRouter, Navigate, RouterProvider} from 'react-router-dom'
 import {AuthProvider} from './auth/AuthContext'
@@ -34,21 +37,22 @@ const routes = [{
     </RequireAuth>
   ),
   children: [
+    {path: 'metadata/resources', element: <RequirePermission resourceKey="tianshu.page.resourceMetadata"><PageLanguageBoundary pageCode="tianshu.metadata"><ResourceMetadataPage /></PageLanguageBoundary></RequirePermission>},
     { index: true, element: <Navigate to="/registry" replace /> },
-    { path: 'registry', element: <PageLanguageBoundary pageCode="tianshu.registry"><RegistryPage /></PageLanguageBoundary> },
-    { path: 'configs', element: <PageLanguageBoundary pageCode="tianshu.configs"><ConfigsPage /></PageLanguageBoundary> },
-    { path: 'bizs', element: <PageLanguageBoundary pageCode="tianshu.bizs"><BizsPage /></PageLanguageBoundary> },
-    { path: 'envs', element: <PageLanguageBoundary pageCode="tianshu.envs"><EnvPage /></PageLanguageBoundary> },
-    { path: 'apps', element: <PageLanguageBoundary pageCode="tianshu.apps"><AppsPage /></PageLanguageBoundary> },
-    { path: 'namespaces', element: <PageLanguageBoundary pageCode="tianshu.namespaces"><NamespacesPage /></PageLanguageBoundary> },
-    { path: 'bindings', element: <PageLanguageBoundary pageCode="tianshu.bindings"><BindingsPage /></PageLanguageBoundary> },
-    { path: 'publish-tasks', element: <PageLanguageBoundary pageCode="tianshu.publishTasks"><PublishTasksPage /></PageLanguageBoundary> },
-    { path: 'cache', element: <PageLanguageBoundary pageCode="tianshu.cache"><CachePage /></PageLanguageBoundary> },
-    { path: 'instances', element: <PageLanguageBoundary pageCode="tianshu.instances"><InstancesPage /></PageLanguageBoundary> },
-    { path: 'ai/prompts', element: <PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="PROMPT" /></PageLanguageBoundary> },
-    { path: 'ai/skills', element: <PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="SKILL" /></PageLanguageBoundary> },
-    { path: 'ai/resources/:id', element: <PageLanguageBoundary pageCode="tianshu.ai.editor"><AiResourceEditorPage /></PageLanguageBoundary> },
-    { path: 'metadata/i18n', element: <PageLanguageBoundary pageCode="tianshu.i18n"><I18nPage /></PageLanguageBoundary> },
+    { path: 'registry', element: <RequirePermission resourceKey="tianshu.page.registry"><PageLanguageBoundary pageCode="tianshu.registry"><RegistryPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'configs', element: <RequirePermission resourceKey="tianshu.page.configs"><PageLanguageBoundary pageCode="tianshu.configs"><ConfigsPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'bizs', element: <RequirePermission resourceKey="tianshu.page.bizs"><PageLanguageBoundary pageCode="tianshu.bizs"><BizsPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'envs', element: <RequirePermission resourceKey="tianshu.page.envs"><PageLanguageBoundary pageCode="tianshu.envs"><EnvPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'apps', element: <RequirePermission resourceKey="tianshu.page.apps"><PageLanguageBoundary pageCode="tianshu.apps"><AppsPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'namespaces', element: <RequirePermission resourceKey="tianshu.page.namespaces"><PageLanguageBoundary pageCode="tianshu.namespaces"><NamespacesPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'bindings', element: <RequirePermission resourceKey="tianshu.page.bindings"><PageLanguageBoundary pageCode="tianshu.bindings"><BindingsPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'publish-tasks', element: <RequirePermission resourceKey="tianshu.page.publishTasks"><PageLanguageBoundary pageCode="tianshu.publishTasks"><PublishTasksPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'cache', element: <RequirePermission resourceKey="tianshu.page.cache"><PageLanguageBoundary pageCode="tianshu.cache"><CachePage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'instances', element: <RequirePermission resourceKey="tianshu.page.instances"><PageLanguageBoundary pageCode="tianshu.instances"><InstancesPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'ai/prompts', element: <RequirePermission resourceKey="tianshu.page.prompts"><PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="PROMPT" /></PageLanguageBoundary></RequirePermission> },
+    { path: 'ai/skills', element: <RequirePermission resourceKey="tianshu.page.skills"><PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="SKILL" /></PageLanguageBoundary></RequirePermission> },
+    { path: 'ai/resources/:id', element: <RequirePermission resourceKey="tianshu.page.aiEditor"><PageLanguageBoundary pageCode="tianshu.ai.editor"><AiResourceEditorPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'metadata/i18n', element: <RequirePermission resourceKey="tianshu.page.i18n"><PageLanguageBoundary pageCode="tianshu.i18n"><I18nPage /></PageLanguageBoundary></RequirePermission> },
   ],
 }]
 
@@ -64,7 +68,7 @@ export default function App() {
   if (!router) return null
   return (
     <AuthProvider>
-      <AdminI18nProvider><RouterProvider router={router} /></AdminI18nProvider>
+      <FieldCatalogProvider><AdminI18nProvider><RouterProvider router={router} /></AdminI18nProvider></FieldCatalogProvider>
     </AuthProvider>
   )
 }

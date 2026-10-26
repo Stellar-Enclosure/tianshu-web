@@ -40,12 +40,6 @@ describe('App', () => {
     })
     vi.stubGlobal('fetch', vi.fn((input) => {
       const url = String(input)
-      if (url.endsWith('/api/v1/tianshu/auth/bootstrap')) {
-        return Promise.resolve(jsonResponse({
-          user: { identitySub: 'admin' },
-          permissions: ['TIANSHU_READ'],
-        }))
-      }
       if (url.includes('/instances/page')) {
         return Promise.resolve(jsonResponse({
           success: true,

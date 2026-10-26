@@ -45,6 +45,8 @@ for (const file of files) {
   }
   const report = (node, message) => failures.push(`${path}:${tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1}: ${message}`)
   const visit = (node) => {
+    // Source catalogs are compiled by the permission scanner; their defaults are intentionally literal.
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'defineMessages') return
     let visible = null
     if (ts.isJsxText(node) && node.text.trim()) visible = node.text.trim()
     if (ts.isJsxAttribute(node) && attributes.has(node.name.getText(tree)) && node.initializer

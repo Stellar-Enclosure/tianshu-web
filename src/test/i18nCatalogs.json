@@ -276,7 +276,8 @@
       "antd.ColorPicker.transparent": "无色",
       "antd.ColorPicker.singleColor": "单色",
       "antd.ColorPicker.gradientColor": "渐变色",
-      "error.csrf": "无法验证请求，请刷新登录状态后重试"
+      "error.csrf": "无法验证请求，请刷新登录状态后重试",
+      "nav.resourceMetadata": "资源权限目录"
     },
     "en-US": {
       "common.save": "Save",
@@ -554,7 +555,8 @@
       "antd.ColorPicker.gradientColor": "Gradient",
       "antd.DatePicker.lang.cellDateFormat": "D",
       "antd.Calendar.lang.cellDateFormat": "D",
-      "error.csrf": "The request could not be verified. Refresh your session and try again."
+      "error.csrf": "The request could not be verified. Refresh your session and try again.",
+      "nav.resourceMetadata": "Resource catalog"
     }
   },
   "tianshu.ai.editor": {
@@ -1641,7 +1643,17 @@
       "admin.description": "在固定的管理台作用域中维护菜单与各页面文案。初始化只创建并发布缺失语言包，已有页面和草稿保持不变。",
       "admin.open": "查看管理台语言包",
       "admin.initialize": "初始化默认文案",
-      "admin.initialized": "已创建 {{created}} 个语言包，跳过 {{skipped}} 个已有页面"
+      "admin.initialized": "已创建 {{created}} 个语言包，跳过 {{skipped}} 个已有页面",
+      "source.load": "加载代码源文案",
+      "source.review": "源文案核对",
+      "source.reviewKey": "确认已核对 {{key}}",
+      "source.default": "源默认文案",
+      "source.published": "已发布覆盖",
+      "source.version": "当前目录激活版本：{{version}}",
+      "source.reviewRequired": "请逐项核对当前源文案后再保存。",
+      "source.publishUncertain": "发布结果尚未确认，请查询这次发布的结果。",
+      "source.checkPublication": "查询发布结果",
+      "source.retryPublication": "重试同一次发布"
     },
     "en-US": {
       "fields.pageCode": "Page code",
@@ -1738,7 +1750,17 @@
       "admin.description": "Manage navigation and page text in the fixed administration scope. Initialization creates and publishes missing bundles while preserving existing pages and drafts.",
       "admin.open": "View administration bundles",
       "admin.initialize": "Initialize default text",
-      "admin.initialized": "Created {{created}} bundles; skipped {{skipped}} existing pages"
+      "admin.initialized": "Created {{created}} bundles; skipped {{skipped}} existing pages",
+      "source.load": "Load source messages",
+      "source.review": "Review source",
+      "source.reviewKey": "Confirm source review: {{key}}",
+      "source.default": "Source default",
+      "source.published": "Published override",
+      "source.version": "Current catalog activation: {{version}}",
+      "source.reviewRequired": "Review each current source message before saving.",
+      "source.publishUncertain": "Publication outcome is not confirmed. Check this operation.",
+      "source.checkPublication": "Check publication",
+      "source.retryPublication": "Retry the same publication"
     }
   },
   "tianshu.instances": {
@@ -1953,6 +1975,40 @@
       "status.ONLINE": "Online",
       "status.OFFLINE": "Offline",
       "status.UNKNOWN": "Unknown"
+    }
+  },
+  "tianshu.metadata": {
+    "zh-CN": {
+      "catalog.scopeId": "目录范围 ID",
+      "catalog.version": "目录激活版本",
+      "metadata.title": "资源与权限目录",
+      "metadata.description": "只读查看代码声明、权限组合、字段策略与来源版本。",
+      "metadata.key": "稳定键",
+      "metadata.type": "资源类型",
+      "metadata.kind": "元数据类型",
+      "metadata.lifecycle": "生命周期",
+      "metadata.producer": "生产者",
+      "metadata.permissions": "权限代码",
+      "metadata.label": "文案引用",
+      "metadata.search": "查询",
+      "metadata.sourceVersion": "来源版本",
+      "metadata.policy": "目标与权限策略"
+    },
+    "en-US": {
+      "catalog.scopeId": "Catalog scope ID",
+      "catalog.version": "Catalog activation version",
+      "metadata.title": "Resource and permission catalog",
+      "metadata.description": "Read code declarations, permission combinations, field policies and source versions.",
+      "metadata.key": "Stable key",
+      "metadata.type": "Resource type",
+      "metadata.kind": "Metadata kind",
+      "metadata.lifecycle": "Lifecycle",
+      "metadata.producer": "Producer",
+      "metadata.permissions": "Permission codes",
+      "metadata.label": "Message reference",
+      "metadata.search": "Search",
+      "metadata.sourceVersion": "Source version",
+      "metadata.policy": "Target and permission policy"
     }
   }
 }

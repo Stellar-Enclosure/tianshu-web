@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -36,6 +38,7 @@ const config: DdcConfig = {
 describe('ConfigEditorDialog', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -69,7 +72,7 @@ describe('ConfigEditorDialog', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     const create = vi.mocked(fetch).mock.calls.find(([input, init]) =>
-      String(input) === '/api/v1/tianshu/configs' && init?.method === 'POST')
+      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs' && init?.method === 'POST')
     expect(create).toBeDefined()
     expect(JSON.parse(String(create?.[1]?.body))).toEqual({
       bizCode: 'pay', namespaceCode: 'default', env: 'dev', appCode: 'orders',
@@ -100,7 +103,7 @@ describe('ConfigEditorDialog', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     const update = vi.mocked(fetch).mock.calls.find(([input, init]) =>
-      String(input) === '/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
+      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
     expect(JSON.parse(String(update?.[1]?.body))).toEqual({
       content: 'feature:\n  enabled: false\n',
       changeReason: '关闭功能',

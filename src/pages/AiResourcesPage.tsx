@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
@@ -70,6 +72,8 @@ const initialDraft = (kind: DdcAiKind): DdcAiContent => kind === 'PROMPT'
 
 export default function AiResourcesPage({ kind }: Props) {
   const { t, locale } = usePageMessages('tianshu.ai.resources')
+  const fieldsWritable = useDdcWritable('DdcAiCreateCommand')
+  const mayMutate = useDdcPermission('tianshu.button.AiResourcesPage.ai_write') && fieldsWritable
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -140,6 +144,7 @@ export default function AiResourcesPage({ kind }: Props) {
   }
 
   const openCreate = () => {
+    if (!mayMutate) return
     setResourceKey('')
     setDisplayName('')
     setDescription('')
@@ -151,6 +156,7 @@ export default function AiResourcesPage({ kind }: Props) {
   }
 
   const confirmDelete = (resource: DdcAiResourceSummary) => {
+    if (!mayMutate) return
     modal.confirm({
       title: t('resources.deleteTitle', { name: resource.displayName }),
       content: t('resources.deleteWarning'),
@@ -197,9 +203,9 @@ export default function AiResourcesPage({ kind }: Props) {
           <Button type="link" onClick={() => navigate(`/ai/resources/${encodeURIComponent(row.id)}`)}>
             {t('common.edit')}
           </Button>
-          <Button danger type="link" onClick={() => confirmDelete(row)}>
+          <PermissionButton resourceKey="tianshu.button.AiResourcesPage.ai_write" danger type="link" onClick={() => confirmDelete(row)}>
             {t('common.delete')}
-          </Button>
+          </PermissionButton>
         </Space>
       ),
     },
@@ -279,9 +285,9 @@ export default function AiResourcesPage({ kind }: Props) {
         <Card
           title={kind === 'PROMPT' ? t('resources.promptDrafts') : t('resources.skillDrafts')}
           extra={(
-            <Button type="primary" disabled={resourcesQuery.isPending} onClick={openCreate}>
+            <PermissionButton resourceKey="tianshu.button.AiResourcesPage.ai_write" type="primary" disabled={resourcesQuery.isPending} onClick={openCreate}>
               {t('resources.createKind', { kind: t(`resources.kind.${kind}`) })}
-            </Button>
+            </PermissionButton>
           )}
         >
           <Table<DdcAiResourceSummary>
@@ -308,13 +314,14 @@ export default function AiResourcesPage({ kind }: Props) {
         onCancel={() => {
           if (!createMutation.isPending) setCreateOpen(false)
         }}
-        onOk={submitCreate}
+        onOk={() => { if (mayMutate) submitCreate() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('resources.createDraft')}
         cancelText={t('common.cancel')}
         confirmLoading={createMutation.isPending}
         destroyOnHidden
       >
-        <Form layout="vertical">
+        <Form disabled={!mayMutate} layout="vertical">
           {createFailure && <Alert type="error" showIcon title={isForbidden(createFailure.error) ? t('resources.createDenied') : formatAdminError(createFailure.error, t)} />}
           <Form.Item label={t('resources.resourceKey')} required>
             <Input

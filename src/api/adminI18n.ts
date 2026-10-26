@@ -1,4 +1,5 @@
-import {ddcApi, ddcMutationApi, requireDdcExpectedTenantId} from './client'
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {ddcApi, ddcMutationApi, requireDdcExpectedTenantId, requireDdcPermissionContext} from './client'
 import type {DdcI18nBundle, DdcI18nScope} from './i18n'
 
 export type AdminI18nBootstrap = {
@@ -18,7 +19,8 @@ export const getAdminI18nBootstrap = (signal?: AbortSignal): Promise<AdminI18nBo
 
 export const getAdminI18nBundle = (pageCode: string, locale: string, signal?: AbortSignal): Promise<DdcI18nBundle> => {
   requireDdcExpectedTenantId()
-  return ddcApi(`${path}/admin/bundle?${new URLSearchParams({pageCode, locale})}`, {signal})
+  const {binding} = requireDdcPermissionContext()
+  return ddcApi(`${path}/admin/bundle?${new URLSearchParams({pageCode, locale, catalogScopeId: binding.catalogScope.catalogScopeId, catalogActivationVersion: binding.catalogVersion})}`, {signal})
 }
 
 export const initializeAdminI18n = (): Promise<{created: number; skipped: number}> => {
@@ -26,8 +28,8 @@ export const initializeAdminI18n = (): Promise<{created: number; skipped: number
   return ddcMutationApi(`${path}/admin/initialize`, {method: 'POST'})
 }
 
-export const getPublicI18nBundle = async (locale: string, signal?: AbortSignal): Promise<DdcI18nBundle> => {
-  const response = await fetch(`${import.meta.env.VITE_YUHENG_ORIGIN ?? ''}${path}/public/bundle?${new URLSearchParams({locale})}`, {
+export const getPublicI18nBundle = async (locale: string, signal?: AbortSignal): Promise<Pick<DdcI18nBundle, 'pageCode' | 'locale' | 'defaultLocale' | 'version' | 'messages'>> => {
+  const response = await fetch(`${gatewayAuth.applicationBaseUrl}${path}/public/bundle?${new URLSearchParams({locale})}`, {
     credentials: 'omit', signal,
   })
   const envelope = await response.json()

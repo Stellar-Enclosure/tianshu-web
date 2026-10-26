@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithQueryClient } from '../test/renderWithQueryClient'
@@ -48,8 +50,9 @@ const jsonResponse = (body: unknown) => new Response(
 
 describe('BindingsPage', () => {
   beforeEach(() => {
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn((input, init) => {
-      const url = String(input)
+      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
       if (url.includes('/namespace-env-app-bindings/page')) {
         return Promise.resolve(jsonResponse(pageResponse))
       }
@@ -82,6 +85,6 @@ describe('BindingsPage', () => {
       init?.method === 'POST'
     ))).toBe(true))
     const postCall = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST')
-    expect(postCall?.[0]).toEqual('/api/v1/tianshu/namespace-env-app-bindings')
+    expect(postCall?.[0]).toEqual('/apps/edge-tianshu/api/v1/tianshu/namespace-env-app-bindings')
   })
 })

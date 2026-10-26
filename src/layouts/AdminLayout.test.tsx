@@ -1,3 +1,4 @@
+import {authorizationFixture} from '../test/permissionFixture'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { App as AntdApp } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -10,7 +11,7 @@ type WujieTestWindow = Window & { $wujie?: { props?: { embedded?: boolean } } }
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
-    token: 'token',
+    authorization: authorizationFixture(),
     identity: 'Mario',
     loading: false,
     login: vi.fn(),

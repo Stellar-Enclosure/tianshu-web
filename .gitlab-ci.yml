@@ -5,53 +5,101 @@ workflow:
       when: never
     - if: '$CI_PIPELINE_SOURCE == "push"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
-
-stages:
-  - test
-
+stages: [test, permission-delivery]
 default:
-  image: node:24-bookworm
+  image: node:24-bookworm-slim
   interruptible: true
-
 variables:
-  STELLAR_USE_SOURCE_BOOTSTRAP: "true"
   npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
   npm_config_audit: "false"
   npm_config_fund: "false"
-
-build-and-unit-tests:
-  stage: test
+  PERMISSION_SDK_ROOT: "$CI_PROJECT_DIR/.ci/workspace/web-sdk"
+  PERMISSION_BUILD_ROOT: "$CI_PROJECT_DIR/.ci/workspace/tianshu-web"
+  PERMISSION_OUTPUT_ROOT: "$CI_PROJECT_DIR/.ci/permission-results"
+  PERMISSION_CONTRACT_ARTIFACT_FILE: "$CI_PROJECT_DIR/.ci/permission-contract.jar"
+  PAC_SDK_DIR: "$CI_PROJECT_DIR/.ci/workspace/web-sdk"
+  PAC_TOOLCHAIN_LOCK: "$CI_PROJECT_DIR/permission-toolchain.lock.json"
+  PAC_CONTRACT_ARTIFACT: "$CI_PROJECT_DIR/.ci/permission-contract.jar"
+  PAC_BUILD_ID: "gitlab-$CI_PIPELINE_ID-$CI_JOB_ID"
+.permission-node:
   timeout: 45 minutes
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends ca-certificates curl git python3 unzip
+    - python3 scripts/permission-ci.test.py
+    - |
+      set -eu
+      sdk_commit=$(python3 scripts/permission-ci.py pin)
+      mkdir -p "$PERMISSION_SDK_ROOT"
+      git init --quiet "$PERMISSION_SDK_ROOT"
+      sdk_url="${PERMISSION_SDK_REPOSITORY_URL:-$CI_SERVER_URL/$CI_PROJECT_NAMESPACE/web-sdk.git}"
+      git -C "$PERMISSION_SDK_ROOT" remote add origin "$sdk_url"
+      git -C "$PERMISSION_SDK_ROOT" -c 'credential.helper=!f() { printf "username=gitlab-ci-token\npassword=%s\n" "$CI_JOB_TOKEN"; }; f' \
+        fetch --quiet --depth 1 origin "$sdk_commit"
+      git -C "$PERMISSION_SDK_ROOT" checkout --quiet --detach FETCH_HEAD
+      (cd "$PERMISSION_SDK_ROOT" && npm ci)
+      python3 - <<'CHECK'
+      import os, urllib.parse
+      url = urllib.parse.urlsplit(os.environ.get('PERMISSION_CONTRACT_ARTIFACT_URL', ''))
+      if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+          raise SystemExit('A non-secret HTTPS contract artifact URL is required')
+      CHECK
+      curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        --max-filesize 67108864 "$PERMISSION_CONTRACT_ARTIFACT_URL" --output "$PERMISSION_CONTRACT_ARTIFACT_FILE"
+      python3 scripts/permission-ci.py prepare
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths: [.ci/permission-results/]
+build-and-unit-tests:
+  extends: .permission-node
+  stage: test
   cache:
     key:
       prefix: npm-node24
-      files:
-        - package-lock.json
-    paths:
-      - .cache/npm/
+      files: [package-lock.json]
+    paths: [.cache/npm/]
   script:
     - |
       set -eu
-      workspace="$CI_PROJECT_DIR/.ci/workspace"
-      mkdir -p "$workspace"
-      git clone --quiet --no-hardlinks "$CI_PROJECT_DIR" "$workspace/tianshu-web"
-      if [ "$STELLAR_USE_SOURCE_BOOTSTRAP" != "false" ]; then
-        # The web-sdk project must allow this project's CI_JOB_TOKEN to read its repository.
-        # Override STELLAR_SOURCE_BASE_URL to use another group or source mirror.
-        source_base="${STELLAR_SOURCE_BASE_URL:-${CI_REPOSITORY_URL%/*}}"
-        git clone --quiet --depth 1 "$source_base/web-sdk.git" "$workspace/web-sdk"
-        node "$workspace/web-sdk/scripts/verify-consumers.mjs" \
-          --workspace "$workspace" \
-          --cache "$npm_config_cache" \
-          --output "$CI_PROJECT_DIR/.ci/npm-release" \
-          --consumer tianshu-web --phase verify --online true
-      else
-        cd "$workspace/tianshu-web"
-        npm ci
-        npm run build
-        npm test -- --run --testTimeout=15000
-      fi
+      git clone --quiet --no-hardlinks "$CI_PROJECT_DIR" "$PERMISSION_BUILD_ROOT"
+      git -C "$PERMISSION_BUILD_ROOT" checkout --quiet --detach "$CI_COMMIT_SHA"
+      node "$PERMISSION_SDK_ROOT/scripts/verify-consumers.mjs" \
+        --workspace "$CI_PROJECT_DIR/.ci/workspace" --cache "$npm_config_cache" \
+        --output "$CI_PROJECT_DIR/.ci/npm-artifacts" --consumer tianshu-web --phase verify --online true
+      python3 scripts/permission-ci.py validate
   artifacts:
-    expire_in: 7 days
+    when: always
+    expire_in: 14 days
     paths:
       - .ci/workspace/tianshu-web/dist/
+      - .ci/workspace/tianshu-web/.generated/permissions/
+      - .ci/permission-results/
+permission-register:
+  extends: .permission-node
+  stage: permission-delivery
+  interruptible: false
+  resource_group: permission-$PERMISSION_TARGET
+  environment: {name: permission-register}
+  needs: [{job: build-and-unit-tests, artifacts: true}]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $PERMISSION_DELIVERY_ENABLED == "true" && $CI_PIPELINE_SOURCE != "merge_request_event"'
+      when: manual
+    - when: never
+  script:
+    # Use a scoped owner-only protected file variable; no plaintext argv credential.
+    - python3 scripts/permission-ci.py register
+permission-activate:
+  extends: .permission-node
+  stage: permission-delivery
+  interruptible: false
+  resource_group: permission-$PERMISSION_TARGET
+  environment: {name: permission-activate}
+  needs: [{job: build-and-unit-tests, artifacts: true}]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $PERMISSION_DELIVERY_ENABLED == "true" && $CI_PIPELINE_SOURCE != "merge_request_event"'
+      when: manual
+    - when: never
+  script:
+    # The trusted deployment stage provides fresh readiness and existing qualification IDs.
+    - python3 scripts/permission-ci.py activate

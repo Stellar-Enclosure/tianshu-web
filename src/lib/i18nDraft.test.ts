@@ -9,6 +9,18 @@ const draft = () => i18nDraftToBuffer({
 })
 
 describe('page translation draft validation', () => {
+  it('validates placeholders against the source default even when the default-locale override was edited', () => {
+    const buffer = i18nDraftToBuffer({name: '页面', defaultLocale: 'zh-CN', translations: {'zh-CN': {title: '覆盖文案'}}})
+    expect(() => i18nBufferToDraft(buffer, {'zh-CN': {title: '源文案 {{name}}'}})).toThrow(AdminMessageError)
+  })
+
+  it('allows removal of an obsolete override while rejecting text for a missing source key', () => {
+    const buffer = i18nDraftToBuffer({name: '页面', defaultLocale: 'zh-CN', translations: {'zh-CN': {removed: '旧文案'}}})
+    expect(() => i18nBufferToDraft(buffer, {'zh-CN': {current: '当前源文案'}})).toThrow(AdminMessageError)
+    buffer.entries[0].values['zh-CN'] = ''
+    expect(i18nBufferToDraft(buffer, {'zh-CN': {current: '当前源文案'}}).translations).toEqual({'zh-CN': {}})
+  })
+
   it('keeps exact nonempty translations and omits missing locale values for fallback', () => {
     const buffer = draft()
     buffer.entries[0].values['en-US'] = '  '

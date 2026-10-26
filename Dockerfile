@@ -1,20 +1,12 @@
-FROM node:22-alpine AS build
-
-WORKDIR /workspace
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:22-alpine
+FROM node:24-alpine
 
 ENV PORT=8080
-ENV TIANSHU_ADMIN_API_BASE_URL=http://tianshu-admin:18080
-ENV TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT=true
+ENV TIANSHU_EDGE_BASE_URL=http://edge:18180
 
 WORKDIR /app
-COPY --from=build --chown=node:node /workspace/dist /app/dist
+COPY --chown=node:node dist /app/dist
 COPY --chown=node:node static-server.mjs /app/static-server.mjs
+RUN test -f /app/dist/permission-build.json
 
 USER node
 EXPOSE 8080

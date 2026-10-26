@@ -1,9 +1,10 @@
 import { createElement } from 'react'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as apiClient from '../api/client'
 import {ddcApi} from '../api/client'
-import type { AuthorizationBootstrap } from '../api/types'
+import type {PermissionSnapshot} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {permissionSnapshot, gatewayIdentity, csrfFixture} from '../test/permissionFixture'
 import { AuthProvider, gatewayAuth, useAuth } from './AuthContext'
 import { renderWithQueryClient } from '../test/renderWithQueryClient'
 
@@ -16,20 +17,7 @@ const requestContext = () => {
   return (getter as () => RequestContext)()
 }
 
-const bootstrap = (tenantId: string): AuthorizationBootstrap => ({
-  user: { id: `user-${tenantId}`, tenantId, identitySub: `subject-${tenantId}`, status: 'ACTIVE' },
-  activeRoleContexts: [],
-  permissions: ['TIANSHU_READ'],
-  apps: [],
-  menus: [],
-  routes: [],
-  actions: [],
-  fieldPolicies: {},
-  defaultApplicationCode: null,
-  defaultRoute: null,
-  authVersion: 1,
-  policyVersion: 1,
-})
+const bootstrap = permissionSnapshot
 
 function SessionProbe() {
   const auth = useAuth()
@@ -64,9 +52,32 @@ function GuardedSessionProbe({guard}: {guard: () => Promise<boolean>}) {
 }
 
 describe('AuthContext tenant session isolation', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_PERMISSION_NAMESPACE', 'default')
+    vi.stubEnv('VITE_PERMISSION_ENVIRONMENT', 'local')
+    vi.spyOn(gatewayAuth, 'identity').mockResolvedValue(gatewayIdentity())
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
+  })
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('rejects an otherwise well-formed permission view for a different verified subject', async () => {
+    vi.spyOn(gatewayAuth, 'bootstrap').mockResolvedValue({...bootstrap('1001'), subject: 'other-subject'})
+    const {unmount} = renderWithQueryClient(createElement(AuthProvider, null, createElement(SessionProbe)))
+    await waitFor(() => expect(gatewayAuth.bootstrap).toHaveBeenCalledOnce())
+    expect(requestContext().tenantId).toBeUndefined()
+    unmount()
+  })
+
+  it('requires an explicit matching deployment catalog instead of accepting a missing namespace binding', async () => {
+    vi.stubEnv('VITE_PERMISSION_NAMESPACE', '')
+    vi.spyOn(gatewayAuth, 'bootstrap').mockResolvedValue(bootstrap('1001'))
+    const {unmount} = renderWithQueryClient(createElement(AuthProvider, null, createElement(SessionProbe)))
+    await waitFor(() => expect(gatewayAuth.bootstrap).toHaveBeenCalledOnce())
+    expect(requestContext().tenantId).toBeUndefined()
+    unmount()
   })
 
   it('derives the expected request tenant from the verified bootstrap', async () => {
@@ -82,7 +93,8 @@ describe('AuthContext tenant session isolation', () => {
 
   it('clears local tenant state before OIDC navigation and trusts the returned bootstrap', async () => {
     const bootstraps = [bootstrap('1001'), bootstrap('2002')]
-    vi.spyOn(gatewayAuth, 'bootstrap').mockImplementation(async () => bootstraps.shift() as AuthorizationBootstrap)
+    vi.mocked(gatewayAuth.identity).mockResolvedValueOnce(gatewayIdentity('1001')).mockResolvedValueOnce(gatewayIdentity('2002'))
+    vi.spyOn(gatewayAuth, 'bootstrap').mockImplementation(async () => bootstraps.shift() as PermissionSnapshot)
     const login = vi.spyOn(gatewayAuth, 'login').mockImplementation(() => {})
 
     const { queryClient, unmount } = renderWithQueryClient(
@@ -120,8 +132,9 @@ describe('AuthContext tenant session isolation', () => {
 
   it('rebootstraps on tenant mismatch without replaying the request', async () => {
     const bootstraps = [bootstrap('1001'), bootstrap('2002')]
+    vi.mocked(gatewayAuth.identity).mockResolvedValueOnce(gatewayIdentity('1001')).mockResolvedValueOnce(gatewayIdentity('2002'))
     vi.spyOn(gatewayAuth, 'bootstrap').mockImplementation(
-      async () => bootstraps.shift() as AuthorizationBootstrap,
+      async () => bootstraps.shift() as PermissionSnapshot,
     )
     const {queryClient, unmount} = renderWithQueryClient(
       createElement(AuthProvider, null, createElement(SessionProbe)),
@@ -169,7 +182,7 @@ describe('AuthContext tenant session isolation', () => {
 
   it('clears tenant query state and advances generation on logout', async () => {
     vi.spyOn(gatewayAuth, 'bootstrap').mockResolvedValue(bootstrap('1001'))
-    vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED'})
+    vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED', status: 'LOCAL_CLOSED', operationId: '00000000-0000-0000-0000-000000000001', ssoLogoutUri: 'https://idp.example/tenants/1001/logout'})
     const {queryClient, unmount} = renderWithQueryClient(
       createElement(AuthProvider, null, createElement(SessionProbe)),
     )
@@ -190,7 +203,7 @@ describe('AuthContext tenant session isolation', () => {
   it('keeps tenant session and query data when an unsaved-change guard declines login and logout', async () => {
     vi.spyOn(gatewayAuth, 'bootstrap').mockResolvedValue(bootstrap('1001'))
     const login = vi.spyOn(gatewayAuth, 'login').mockImplementation(() => {})
-    const logout = vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED'})
+    const logout = vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED', status: 'LOCAL_CLOSED', operationId: '00000000-0000-0000-0000-000000000001', ssoLogoutUri: 'https://idp.example/tenants/1001/logout'})
     const guard = vi.fn().mockResolvedValue(false)
     const {queryClient, unmount} = renderWithQueryClient(
       createElement(AuthProvider, null, createElement(GuardedSessionProbe, {guard})),
@@ -221,7 +234,7 @@ describe('AuthContext tenant session isolation', () => {
 
   it('clears session once after a dirty guard approves logout', async () => {
     vi.spyOn(gatewayAuth, 'bootstrap').mockResolvedValue(bootstrap('1001'))
-    const logout = vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED'})
+    const logout = vi.spyOn(gatewayAuth, 'logout').mockResolvedValue({remoteState: 'CONFIRMED', status: 'LOCAL_CLOSED', operationId: '00000000-0000-0000-0000-000000000001', ssoLogoutUri: 'https://idp.example/tenants/1001/logout'})
     const guard = vi.fn().mockResolvedValue(true)
     const {queryClient, unmount} = renderWithQueryClient(
       createElement(AuthProvider, null, createElement(GuardedSessionProbe, {guard})),
@@ -242,10 +255,11 @@ describe('AuthContext tenant session isolation', () => {
     unmount()
   })
 
-  it('keeps dirty tenant state when mismatch recovery is declined and never replays the request', async () => {
+  it('clears mismatched tenant state immediately despite a declined dirty guard and never replays', async () => {
     const bootstraps = [bootstrap('1001'), bootstrap('2002')]
+    vi.mocked(gatewayAuth.identity).mockResolvedValueOnce(gatewayIdentity('1001')).mockResolvedValueOnce(gatewayIdentity('2002'))
     const bootstrapMock = vi.spyOn(gatewayAuth, 'bootstrap').mockImplementation(
-      async () => bootstraps.shift() as AuthorizationBootstrap,
+      async () => bootstraps.shift() as PermissionSnapshot,
     )
     const guard = vi.fn().mockResolvedValue(false)
     const {queryClient, unmount} = renderWithQueryClient(
@@ -267,11 +281,12 @@ describe('AuthContext tenant session isolation', () => {
       body: {expectedRevision: '3'},
     })).rejects.toMatchObject({status: 403, code: 'TIANSHU_ADMIN_TENANT_MISMATCH'})
 
-    await waitFor(() => expect(guard).toHaveBeenCalledTimes(1))
-    expect(requestContext().tenantId).toBe('1001')
-    expect(requestContext().sessionGeneration).toBe(generation)
-    expect(queryClient.getQueryData(tenantKey)).toEqual(cachedResources)
-    expect(bootstrapMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(requestContext().tenantId).toBe('2002'))
+    expect(guard).not.toHaveBeenCalled()
+    expect(requestContext().tenantId).toBe('2002')
+    expect(requestContext().sessionGeneration).toBeGreaterThan(generation)
+    expect(queryClient.getQueryData(tenantKey)).toBeUndefined()
+    expect(bootstrapMock).toHaveBeenCalledTimes(2)
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     unmount()
   })
@@ -281,7 +296,7 @@ describe('AuthContext tenant session isolation', () => {
 describe('fixed deployment registration', () => {
   it('passes the configured alias to the installed client without tenant or issuer selectors', async () => {
     const navigate = vi.fn()
-    vi.stubEnv('VITE_OAUTH_REGISTRATION_ID', 'edge-deployment-child')
+    vi.stubEnv('VITE_OAUTH_APP_ALIAS', 'edge-deployment-child')
     vi.stubEnv('VITE_YUHENG_ORIGIN', '')
     vi.resetModules()
     vi.doUnmock('./AuthContext')
@@ -293,10 +308,8 @@ describe('fixed deployment registration', () => {
     try {
       const {gatewayAuth: configured} = await import('./AuthContext')
       configured.login()
-      configured.stepUp()
-      expect(navigate.mock.calls[0]?.[0]).toBe('/oauth2/authorization/edge-deployment-child')
-      expect(String(navigate.mock.calls[1]?.[0]).split('?')[0]).toBe('/oauth2/authorization/edge-deployment-child')
-      expect(String(navigate.mock.calls[1]?.[0])).not.toMatch(/tenant|issuer|resource/)
+      expect(navigate.mock.calls[0]?.[0]).toBe('/apps/edge-deployment-child/auth/login')
+      expect(String(navigate.mock.calls[0]?.[0])).not.toMatch(/tenant|issuer|resource/)
     } finally {
       vi.doUnmock('@stellar-enclosure/stellar-enclosure-web-shared')
       vi.unstubAllEnvs()

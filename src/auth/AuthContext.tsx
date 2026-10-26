@@ -1,27 +1,34 @@
 import {createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react'
 import {useQueryClient} from '@tanstack/react-query'
-import {createGatewayAuthClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import type {GatewayIdentityResult} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {isPermissionSnapshot, snapshotContext, type PermissionSnapshot, type PermissionSnapshotContext} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {usePermission} from '@stellar-enclosure/stellar-enclosure-web-shared/react-permissions'
+import {resources} from '../permissions/resources'
+import {gatewayAuth} from './gatewayAuth'
 import {
   beginDdcSession,
   isCurrentDdcSession,
   setDdcExpectedTenantId,
+  setDdcPermissionContext,
+  getDdcRequestContext,
   setDdcTenantMismatchHandler,
   setDdcUnauthorizedHandler,
 } from '../api/client'
-import type {AuthorizationBootstrap} from '../api/types'
 import {cancelAndClearDdcQueryClient} from '../query/queryClient'
 import {AdminMessageError} from '../i18n/errors'
 
 type UnsavedChangesGuard = () => Promise<boolean>
 
-const gatewayAuth = createGatewayAuthClient({
-  registrationId: import.meta.env.VITE_OAUTH_REGISTRATION_ID ?? 'edge-tianshu',
-  baseUrl: import.meta.env.VITE_YUHENG_ORIGIN ?? '',
-})
-
 export {gatewayAuth}
 
+export type TianshuAuthorization = {
+  readonly identity: GatewayIdentityResult
+  readonly snapshot: PermissionSnapshot
+  readonly binding: PermissionSnapshotContext
+}
+
 type AuthContextValue = {
+  readonly authorization?: TianshuAuthorization
   readonly identity: string
   readonly tenantId: string
   readonly sessionGeneration: number
@@ -37,15 +44,16 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({children}: {children: ReactNode}) {
   const queryClient = useQueryClient()
-  const [bootstrap, setBootstrap] = useState<AuthorizationBootstrap>()
+  const [authorization, setAuthorization] = useState<TianshuAuthorization>()
   const [sessionGeneration, setSessionGeneration] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error>()
   const unsavedChangesGuards = useRef(new Set<UnsavedChangesGuard>())
   const sessionTransitionPending = useRef(false)
-  const identity = bootstrap?.user.identitySub ?? ''
-  const tenantId = bootstrap?.user.tenantId ?? ''
-  const authorized = bootstrap?.permissions.includes('TIANSHU_READ') ?? false
+  const identity = authorization?.identity.subject ?? ''
+  const tenantId = authorization?.identity.tenantId ?? ''
+  const permission = usePermission(authorization?.snapshot ?? null, authorization?.binding ?? null)
+  const authorized = permission.allows(resources[0].requirement)
 
   const registerUnsavedChangesGuard = useCallback((guard: UnsavedChangesGuard) => {
     unsavedChangesGuards.current.add(guard)
@@ -78,18 +86,28 @@ export function AuthProvider({children}: {children: ReactNode}) {
     const generation = beginDdcSession()
     setSessionGeneration(generation)
     setDdcExpectedTenantId(undefined)
-    setBootstrap(undefined)
+    setAuthorization(undefined)
     void cancelAndClearDdcQueryClient(queryClient)
     return generation
   }, [queryClient])
 
   const loadBootstrap = useCallback(async (generation: number): Promise<void> => {
-    const next = await gatewayAuth.bootstrap<AuthorizationBootstrap>(
-      '/api/v1/tianshu/auth/bootstrap',
-    )
+    const identity = await gatewayAuth.identity()
     if (!isCurrentDdcSession(generation)) return
-    setDdcExpectedTenantId(next.user.tenantId)
-    setBootstrap(next)
+    const captured = gatewayAuth.context.capture()
+    const snapshot = await gatewayAuth.bootstrap<unknown>('/api/v1/authorization/effective-permissions', captured.signal)
+    captured.assertCurrent()
+    if (!isPermissionSnapshot(snapshot) || snapshot.issuer !== identity.issuer || snapshot.subject !== identity.subject
+      || snapshot.catalogScope.tenantId !== identity.tenantId || snapshot.catalogScope.businessCode !== 'xingyuan'
+      || snapshot.catalogScope.applicationCode !== 'tianshu'
+      || snapshot.catalogScope.namespaceCode !== (import.meta.env.VITE_PERMISSION_NAMESPACE ?? '')
+      || snapshot.catalogScope.environment !== (import.meta.env.VITE_PERMISSION_ENVIRONMENT ?? '')
+      || Date.parse(snapshot.snapshotExpiresAt) <= Date.now()) throw new Error('AUTH_CATALOG_SCOPE_MISMATCH')
+    if (!isCurrentDdcSession(generation)) return
+    const binding = snapshotContext(snapshot, captured.epoch)
+    setDdcExpectedTenantId(identity.tenantId)
+    setDdcPermissionContext(snapshot, binding)
+    setAuthorization({identity, snapshot, binding})
   }, [])
 
   const clearAuthorization = useCallback(() => {
@@ -99,21 +117,13 @@ export function AuthProvider({children}: {children: ReactNode}) {
   }, [beginSession])
 
   const refreshAfterTenantMismatch = useCallback(() => {
-    void runSessionTransition(async () => {
-      const generation = beginSession()
-      setError(undefined)
-      setLoading(true)
-      try {
-        await loadBootstrap(generation)
-      } catch (failure) {
-        if (isCurrentDdcSession(generation)) {
-          setError(failure instanceof Error ? failure : new AdminMessageError('auth.tenantFailed'))
-        }
-      } finally {
-        if (isCurrentDdcSession(generation)) setLoading(false)
-      }
-    })
-  }, [beginSession, loadBootstrap, runSessionTransition])
+    const generation = beginSession()
+    setError(undefined)
+    setLoading(true)
+    void loadBootstrap(generation).catch(failure => {
+      if (isCurrentDdcSession(generation)) setError(failure instanceof Error ? failure : new AdminMessageError('auth.tenantFailed'))
+    }).finally(() => { if (isCurrentDdcSession(generation)) setLoading(false) })
+  }, [beginSession, loadBootstrap])
 
   const login = useCallback(async () => {
     await runSessionTransition(async () => {
@@ -124,7 +134,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
         gatewayAuth.login()
       } catch (failure) {
         if (isCurrentDdcSession(generation)) {
-          setBootstrap(undefined)
+          setAuthorization(undefined)
           setError(failure instanceof Error ? failure : new AdminMessageError('auth.loginFailed'))
         }
       } finally {
@@ -168,7 +178,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
     setLoading(true)
     void loadBootstrap(generation)
       .catch(() => {
-        if (active && isCurrentDdcSession(generation)) setBootstrap(undefined)
+        if (active && isCurrentDdcSession(generation)) setAuthorization(undefined)
       })
       .finally(() => {
         if (active && isCurrentDdcSession(generation)) setLoading(false)
@@ -183,10 +193,19 @@ export function AuthProvider({children}: {children: ReactNode}) {
     }
   }, [beginSession, loadBootstrap, queryClient])
 
+  useEffect(() => {
+    if (!authorization) return
+    const deadline = setTimeout(clearAuthorization, Math.max(1, Math.min(Date.parse(authorization.snapshot.snapshotExpiresAt) - Date.now(), 2_147_483_647)))
+    const unsubscribe = gatewayAuth.context.subscribe(() => {
+      if (getDdcRequestContext().tenantId && authorization.binding.requestEpoch !== gatewayAuth.context.epoch) clearAuthorization()
+    })
+    return () => { clearTimeout(deadline); unsubscribe() }
+  }, [authorization, clearAuthorization])
+
   const value = useMemo(
-    () => ({identity, tenantId, sessionGeneration, authorized, loading, error,
+    () => ({authorization, identity, tenantId, sessionGeneration, authorized, loading, error,
       registerUnsavedChangesGuard, login, logout}),
-    [authorized, error, identity, loading, login, logout, registerUnsavedChangesGuard,
+    [authorization, authorized, error, identity, loading, login, logout, registerUnsavedChangesGuard,
       sessionGeneration, tenantId],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

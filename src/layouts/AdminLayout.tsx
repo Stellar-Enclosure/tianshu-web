@@ -1,3 +1,5 @@
+import {usePermission} from '@stellar-enclosure/stellar-enclosure-web-shared/react-permissions'
+import {resources} from '../permissions/resources'
 import {
   ApartmentOutlined,
   AppstoreOutlined,
@@ -43,6 +45,7 @@ const navigation: readonly EnterpriseNavigationItem[] = [
     { key: 'configs', label: 'nav.configs', path: '/configs', icon: <FileTextOutlined /> },
   ] },
   { key: 'metadata', label: 'nav.metadata', icon: <PartitionOutlined />, children: [
+    {key: 'resourceMetadata', label: 'nav.resourceMetadata', path: '/metadata/resources', icon: <DatabaseOutlined />},
     { key: 'i18n', label: 'nav.i18n', path: '/metadata/i18n', icon: <FileTextOutlined /> },
     { key: 'bizs', label: 'nav.bizs', path: '/bizs', icon: <PartitionOutlined /> },
     { key: 'envs', label: 'nav.envs', path: '/envs', icon: <CloudOutlined /> },
@@ -52,14 +55,21 @@ const navigation: readonly EnterpriseNavigationItem[] = [
   ] },
 ]
 
-const translateNavigation = (items: readonly EnterpriseNavigationItem[], t: AdminTranslate): EnterpriseNavigationItem[] =>
-  items.map((item) => ({...item, label: t(item.label),
-    ...(item.children ? {children: translateNavigation(item.children, t)} : {})}))
+const translateNavigation = (items: readonly EnterpriseNavigationItem[], t: AdminTranslate,
+  allowed: (path: string) => boolean): EnterpriseNavigationItem[] => items.flatMap(item => {
+  const children = item.children ? translateNavigation(item.children, t, allowed) : undefined
+  if (item.path ? !allowed(item.path) : !children?.length) return []
+  return [{...item, label: t(item.label), ...(children ? {children} : {})}]
+})
 
 export default function AdminLayout() {
   const {t} = usePageMessages('common')
-  const translatedNavigation = useMemo(() => translateNavigation(navigation, t), [t])
-  const { identity, logout } = useAuth()
+  const {identity, logout, authorization} = useAuth()
+  const permission = usePermission(authorization?.snapshot ?? null, authorization?.binding ?? null)
+  const translatedNavigation = useMemo(() => translateNavigation(navigation, t, path => {
+    const resource = resources.find(resource => resource.type === 'MENU' && 'route' in resource.target && resource.target.route === path)
+    return !!resource && permission.allows('requirement' in resource ? resource.requirement : {access: resource.access})
+  }), [permission, t])
   const embedded = (window as WujieRuntimeWindow).$wujie?.props?.embedded === true
 
   const config: EnterpriseLayoutConfig = {

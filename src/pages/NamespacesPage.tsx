@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -51,6 +53,8 @@ type NamespaceFormValues = {
 
 export default function NamespacesPage() {
   const { t, locale } = usePageMessages('tianshu.namespaces')
+  const fieldsWritable = useDdcWritable('DdcNamespaceBO')
+  const mayMutate = useDdcPermission('tianshu.button.NamespacesPage.write') && fieldsWritable
   const { message } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
@@ -301,7 +305,7 @@ export default function NamespacesPage() {
       render: (_: unknown, row: DdcNamespace) => (
         <Switch
           checked={row.enabled}
-          disabled={toggleMutation.isPending
+          disabled={!mayMutate || toggleMutation.isPending
             && toggleMutation.variables?.item.id === row.id}
           onChange={(enabled) => toggleMutation.mutate({ item: row, enabled })}
         />
@@ -319,15 +323,15 @@ export default function NamespacesPage() {
       fixed: 'right' as const,
       render: (_: unknown, row: DdcNamespace) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
+          <PermissionButton resourceKey="tianshu.button.NamespacesPage.write" size="small" onClick={() => openEdit(row)}>{t('common.edit')}</PermissionButton>
           <Button size="small" onClick={() => { void openBindings(row) }}>
             {t('actions.manageBindings')}
           </Button>
-          <Popconfirm
+          <Popconfirm disabled={!mayMutate}
             title={t('confirm.delete', { name: row.namespace })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger>{t('common.delete')}</Button>
+            <PermissionButton resourceKey="tianshu.button.NamespacesPage.write" size="small" danger>{t('common.delete')}</PermissionButton>
           </Popconfirm>
         </Space>
       ),
@@ -340,7 +344,7 @@ export default function NamespacesPage() {
         title={t('title')}
         description={t('description')}
         extra={(
-          <Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>
+          <PermissionButton resourceKey="tianshu.button.NamespacesPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>
         )}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -395,12 +399,13 @@ export default function NamespacesPage() {
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
-        onOk={() => { void save() }}
+        onOk={() => { if (mayMutate) void save() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form<NamespaceFormValues>
+        <Form<NamespaceFormValues> disabled={!mayMutate}
           form={form}
           layout="vertical"
           initialValues={{ enabled: true }}

@@ -1,3 +1,4 @@
+import {PermissionButton} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -186,7 +187,7 @@ export default function PublishTasksPage() {
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => (
-        <Button
+        <PermissionButton resourceKey="tianshu.button.PublishTasksPage.publish"
           size="small"
           type="primary"
           loading={retryMutation.isPending
@@ -194,7 +195,7 @@ export default function PublishTasksPage() {
           onClick={() => confirmRetry(row)}
         >
           {t('common.retry')}
-        </Button>
+        </PermissionButton>
       ),
     },
   ]

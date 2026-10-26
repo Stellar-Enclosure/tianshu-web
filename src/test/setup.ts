@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 import { webcrypto } from 'node:crypto'
 import {vi} from 'vitest'
+import {createElement} from 'react'
+import {Button} from 'antd'
 import type {ReactNode} from 'react'
 import {fixtureT} from './i18nFixture'
 
@@ -40,3 +42,12 @@ if (typeof window.matchMedia === 'undefined') {
       dispatchEvent: () => false,
     }) as MediaQueryList
 }
+
+// Existing page tests isolate UI behavior; authority tests explicitly unmock these shared boundaries.
+vi.mock('../permissions/access', () => ({
+  useDdcPermission: () => true,
+  RequirePermission: ({children}: {children: ReactNode}) => children,
+  PermissionButton: ({resourceKey, ...props}: import('antd').ButtonProps & {resourceKey: string}) => createElement(Button, {...props, 'data-resource-key': resourceKey}),
+}))
+vi.mock('../permissions/FieldCatalog', () => ({useDdcWritable: () => true,
+  FieldCatalogProvider: ({children}: {children: ReactNode}) => children}))

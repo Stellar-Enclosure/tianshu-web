@@ -1,0 +1,164 @@
+name: Controlled permission delivery
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Explicit candidate registration or activation of a deployed artifact
+        type: choice
+        options: [register, activate]
+        required: true
+      build_run_id:
+        description: Successful current protected-branch Build and unit tests run ID
+        required: true
+      producer_id:
+        description: Exact producerId from permission-manifest.config.json
+        required: true
+      target:
+        description: Exact reviewed target name from permission-targets.json
+        required: true
+      expected_producer_revision:
+        description: Reviewed decimal producer revision for registration
+        default: '0'
+        required: true
+      expected_active_revision:
+        description: Reviewed decimal active revision for registration
+        default: '0'
+        required: true
+      operation_id:
+        description: Stable UUID for registration; retain it after a timeout
+        required: false
+      deployment_run_id:
+        description: Successful trusted deployment run with fresh readiness and existing qualification IDs (activation only)
+        required: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: permission-delivery-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  deliver:
+    if: github.ref_protected && vars.PERMISSION_DELIVERY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: permission-${{ inputs.phase }}
+    env:
+      PERMISSION_DELIVERY_ENABLED: ${{ vars.PERMISSION_DELIVERY_ENABLED }}
+      PERMISSION_PRODUCER_ID: ${{ inputs.producer_id }}
+      PERMISSION_TARGET: ${{ inputs.target }}
+      PERMISSION_EXPECTED_PRODUCER_REVISION: ${{ inputs.expected_producer_revision }}
+      PERMISSION_EXPECTED_ACTIVE_REVISION: ${{ inputs.expected_active_revision }}
+      PERMISSION_OPERATION_ID: ${{ inputs.operation_id }}
+      PERMISSION_SDK_ROOT: ${{ github.workspace }}/permission-tools
+      PERMISSION_BUILD_ROOT: ${{ github.workspace }}/permission-temp/permission-build
+      PERMISSION_OUTPUT_ROOT: ${{ github.workspace }}/permission-temp/permission-results
+      PERMISSION_CONTRACT_ARTIFACT_FILE: ${{ github.workspace }}/permission-temp/permission-contract.jar
+      PERMISSION_CONTRACT_ARTIFACT_URL: ${{ vars.PERMISSION_CONTRACT_ARTIFACT_URL }}
+      PERMISSION_CLIENT_SECRET_FILE: ${{ github.workspace }}/permission-temp/permission-client-secret
+      PERMISSION_DEPLOYMENT_EVIDENCE_FILE: ${{ github.workspace }}/permission-temp/permission-deployment/permission-deployment.json
+      PERMISSION_PHASE: ${{ inputs.phase }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+      DEPLOYMENT_WORKFLOW_PATH: ${{ vars.PERMISSION_DEPLOYMENT_WORKFLOW_PATH }}
+    steps:
+      - name: Verify trusted build and deployment run provenance
+        id: provenance
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const runId = process.env.BUILD_RUN_ID;
+            if (!/^[1-9][0-9]*$/.test(runId)) throw new Error('A concrete build run ID is required');
+            const {data: build} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(runId)});
+            const {data: branch} = await github.rest.repos.getBranch({...context.repo, branch: build.head_branch});
+            if (build.path !== '.github/workflows/ci.yml' || build.conclusion !== 'success' || build.status !== 'completed'
+              || !['push', 'workflow_dispatch'].includes(build.event) || build.head_repository?.full_name !== `${context.repo.owner}/${context.repo.repo}`
+              || !branch.protected || branch.commit.sha !== build.head_sha || `refs/heads/${build.head_branch}` !== context.ref
+              || Date.now() - Date.parse(build.updated_at) > 24 * 60 * 60 * 1000) throw new Error('Build run is stale, untrusted, or not the current protected branch');
+            core.setOutput('commit', build.head_sha);
+            if (process.env.PERMISSION_PHASE === 'activate') {
+              const deploymentId = process.env.DEPLOYMENT_RUN_ID;
+              const workflow = process.env.DEPLOYMENT_WORKFLOW_PATH;
+              if (!/^[1-9][0-9]*$/.test(deploymentId) || !/^\.github\/workflows\/[a-zA-Z0-9_-]+\.ya?ml$/.test(workflow)
+                || workflow === '.github/workflows/ci.yml' || workflow === '.github/workflows/permission-delivery.yml') throw new Error('A separate trusted deployment workflow is required');
+              const {data: deployment} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(deploymentId)});
+              if (deployment.path !== workflow || deployment.conclusion !== 'success' || deployment.status !== 'completed'
+                || deployment.head_sha !== build.head_sha || deployment.head_branch !== build.head_branch
+                || deployment.head_repository?.full_name !== build.head_repository.full_name
+                || !['push', 'workflow_dispatch'].includes(deployment.event)) throw new Error('Deployment provenance does not match the packaged build');
+            }
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.provenance.outputs.commit }}
+          path: source
+          persist-credentials: false
+      - name: Read immutable SDK toolchain pin
+        id: pin
+        working-directory: source
+        run: |
+          sdk_commit=$(python3 scripts/permission-ci.py pin)
+          echo "commit=$sdk_commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          repository: Stellar-Enclosure/web-sdk
+          ref: ${{ steps.pin.outputs.commit }}
+          path: permission-tools
+          token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: permission-tools/package-lock.json
+      - name: Install pinned tool dependencies
+        working-directory: permission-tools
+        run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: permission-frontend-artifacts
+          path: ${{ github.workspace }}/permission-temp/permission-build
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: inputs.phase == 'activate'
+        with:
+          name: permission-deployment-evidence
+          path: ${{ github.workspace }}/permission-temp/permission-deployment
+          run-id: ${{ inputs.deployment_run_id }}
+          github-token: ${{ github.token }}
+      - name: Prepare digest-pinned contract
+        working-directory: source
+        run: |
+          python3 - <<'PY'
+          import os, urllib.parse
+          url = urllib.parse.urlsplit(os.environ['PERMISSION_CONTRACT_ARTIFACT_URL'])
+          if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+              raise SystemExit('A non-secret HTTPS contract artifact URL is required')
+          PY
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-filesize 67108864 "$PERMISSION_CONTRACT_ARTIFACT_URL" --output "$PERMISSION_CONTRACT_ARTIFACT_FILE"
+          python3 scripts/permission-ci.py prepare
+      - name: Materialize the scoped client credential in a private temporary file
+        env:
+          PERMISSION_CLIENT_SECRET: ${{ secrets.PERMISSION_CLIENT_SECRET }}
+        run: |
+          python3 - <<'PY'
+          import os
+          secret = os.environ.get('PERMISSION_CLIENT_SECRET', '')
+          if not secret:
+              raise SystemExit('A protected environment client credential is required')
+          descriptor = os.open(os.environ['PERMISSION_CLIENT_SECRET_FILE'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, 'w') as output:
+              output.write(secret)
+          PY
+      - name: Execute the explicit delivery phase
+        working-directory: source
+        run: python3 scripts/permission-ci.py "$PERMISSION_PHASE"
+      - name: Remove temporary client credential
+        if: always()
+        run: rm -f -- "$PERMISSION_CLIENT_SECRET_FILE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: permission-delivery-result-${{ inputs.producer_id }}
+          path: ${{ github.workspace }}/permission-temp/permission-results/
+          if-no-files-found: ignore

@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {
   beginDdcSession,
@@ -38,6 +40,7 @@ describe('ddcApi', () => {
     setDdcTenantMismatchHandler(() => {})
     beginDdcSession()
     setDdcExpectedTenantId('1001')
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
   afterEach(() => {
@@ -53,7 +56,7 @@ describe('ddcApi', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(record({ list: [1] })))
     await expect(ddcApi<{ list: number[] }>('/api/v1/tianshu/apps')).resolves.toEqual({ list: [1] })
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('/api/v1/tianshu/apps')
+    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/apps')
         expect(init!.credentials).toBe('include')
         expect((init!.headers as Headers).has('Authorization')).toBe(false)
     expect((init!.headers as Headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
@@ -82,7 +85,9 @@ describe('ddcApi', () => {
     })
 
     expect(vi.mocked(fetch).mock.calls[0][1]?.signal)
-      .toBe(controller.signal)
+      .toBeInstanceOf(AbortSignal)
+    controller.abort()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.signal?.aborted).toBe(true)
   })
 
   it('accepts ResultRecord failures from the global exception handler', async () => {
@@ -110,7 +115,9 @@ describe('ddcApi', () => {
         )).rejects.toMatchObject({status: 401})
 
         expect(vi.mocked(fetch).mock.calls[0][1]?.signal)
-      .toBe(controller.signal)
+      .toBeInstanceOf(AbortSignal)
+    controller.abort()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.signal?.aborted).toBe(true)
   })
 
   it('throws DdcApiError with backend message on success=false', async () => {
@@ -127,7 +134,7 @@ describe('ddcApi', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ success: false, code: 401, status: 'UNAUTHORIZED', message: 'jwt expired', data: null, traceId: 't', timestamp: 1 }, 401))
     const error = await ddcApi('/api/v1/tianshu/apps').catch((e) => e as DdcApiError) as DdcApiError
     expect(handler).toHaveBeenCalledTimes(1)
-    expect(error.message).toBe('UNAUTHORIZED')
+    expect(error.message).toBe('jwt expired')
     expect(error.category).toBe('UNAUTHENTICATED')
   })
 

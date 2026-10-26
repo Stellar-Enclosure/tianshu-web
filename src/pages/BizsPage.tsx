@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -37,6 +39,8 @@ type BizFormValues = {
 
 export default function BizsPage() {
   const { t, locale } = usePageMessages('tianshu.bizs')
+  const fieldsWritable = useDdcWritable('DdcBizBO')
+  const mayMutate = useDdcPermission('tianshu.button.BizsPage.write') && fieldsWritable
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -175,7 +179,7 @@ export default function BizsPage() {
       render: (_: unknown, row: DdcBiz) => (
         <Switch
           checked={row.enabled}
-          disabled={toggleMutation.isPending
+          disabled={!mayMutate || toggleMutation.isPending
             && toggleMutation.variables?.item.id === row.id}
           onChange={(enabled) => toggleMutation.mutate({ item: row, enabled })}
         />
@@ -193,13 +197,13 @@ export default function BizsPage() {
       fixed: 'right' as const,
       render: (_: unknown, row: DdcBiz) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
-          <Popconfirm
+          <PermissionButton resourceKey="tianshu.button.BizsPage.write" size="small" onClick={() => openEdit(row)}>{t('common.edit')}</PermissionButton>
+          <Popconfirm disabled={!mayMutate}
             title={t('confirm.delete', { code: row.bizCode })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger loading={removeMutation.isPending
-              && removeMutation.variables?.id === row.id}>{t('common.delete')}</Button>
+            <PermissionButton resourceKey="tianshu.button.BizsPage.write" size="small" danger loading={removeMutation.isPending
+              && removeMutation.variables?.id === row.id}>{t('common.delete')}</PermissionButton>
           </Popconfirm>
         </Space>
       ),
@@ -211,7 +215,7 @@ export default function BizsPage() {
       <AdminPageHeader
         title={t('title')}
         description={t('description')}
-        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
+        extra={<PermissionButton resourceKey="tianshu.button.BizsPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -256,12 +260,13 @@ export default function BizsPage() {
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
-        onOk={() => { void save() }}
+        onOk={() => { if (mayMutate) void save() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form<BizFormValues>
+        <Form<BizFormValues> disabled={!mayMutate}
           form={form}
           layout="vertical"
           initialValues={{ enabled: true }}

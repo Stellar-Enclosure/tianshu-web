@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import { DownOutlined } from '@ant-design/icons'
 import {
   keepPreviousData,
@@ -46,6 +48,9 @@ const configScopeLabel = (config: DdcConfig): string => `${config.bizCode} / ${c
 
 export default function ConfigsPage() {
   const { t, locale } = usePageMessages('tianshu.configs')
+  const publishWritable = useDdcWritable('DdcPublishRequest')
+  const rollbackWritable = useDdcWritable('DdcConfigRollbackRequest')
+  const mayMutate = useDdcPermission('tianshu.button.ConfigsPage.write')
   const taskStatusLabel = (status: string): string =>
     ['PENDING', 'DISPATCHED', 'PUBLISHING', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED', 'TIMEOUT', 'UNKNOWN'].includes(status)
       ? t(`status.${status}`)
@@ -304,14 +309,14 @@ export default function ConfigsPage() {
       render: (_: unknown, row) => {
         const items: MenuProps['items'] = [
           { key: 'versions', label: t('actions.viewVersions') },
-          { key: 'delete', label: t('common.delete'), danger: true },
+          { key: 'delete', label: t('common.delete'), danger: true, disabled: !mayMutate },
         ]
         return (
           <Space.Compact>
-            <Button size="small" onClick={() => openEditDialog(row)}>
+            <PermissionButton resourceKey="tianshu.button.ConfigsPage.write" size="small" onClick={() => openEditDialog(row)}>
               {t('common.edit')}
-            </Button>
-            <Button
+            </PermissionButton>
+            <PermissionButton disabled={!publishWritable} resourceKey="tianshu.button.ConfigsPage.publish"
               size="small"
               type="primary"
               loading={publishMutation.isPending
@@ -319,7 +324,7 @@ export default function ConfigsPage() {
               onClick={() => confirmPublish(row)}
             >
               {t('actions.publish')}
-            </Button>
+            </PermissionButton>
             <Dropdown
               trigger={['click']}
               menu={{
@@ -373,12 +378,12 @@ export default function ConfigsPage() {
       key: 'actions',
       fixed: 'right',
       render: (_: unknown, row) => versionsConfig && (
-        <Button
+        <PermissionButton disabled={!rollbackWritable} resourceKey="tianshu.button.ConfigsPage.publish"
           size="small"
           onClick={() => confirmRollback(versionsConfig, row)}
         >
           {t('actions.rollback')}
-        </Button>
+        </PermissionButton>
       ),
     },
   ]
@@ -389,9 +394,9 @@ export default function ConfigsPage() {
         title={t('title')}
         description={t('description')}
         extra={(
-          <Button type="primary" onClick={openNewDialog}>
+          <PermissionButton resourceKey="tianshu.button.ConfigsPage.write" type="primary" onClick={openNewDialog}>
             {t('actions.create')}
-          </Button>
+          </PermissionButton>
         )}
       />
       <Card size="small" style={{ marginBottom: 16 }}>

@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {useDdcPermission} from '../permissions/access'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { App, Form, Grid, Input, Modal, Space, Tag, Typography } from 'antd'
@@ -41,6 +43,9 @@ const ensureBinding = async (scope: ConfigScope, t: AdminTranslate) => {
 
 export default function ConfigEditorDialog({ open, config, defaultScope, onClose, onSaved }: Props) {
   const { t } = usePageMessages('tianshu.configs')
+  const createWritable = useDdcWritable('DdcConfigCreateRequest')
+  const updateWritable = useDdcWritable('DdcConfigUpdateRequest')
+  const mayMutate = useDdcPermission('tianshu.button.ConfigEditorDialog.write') && (config?.id ? updateWritable : createWritable)
   const [form] = Form.useForm<FormValues>()
   const { message } = App.useApp()
   const screens = Grid.useBreakpoint()
@@ -75,6 +80,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
   }, [open, config, defaultScope, editing, form])
 
   const save = async () => {
+    if (!mayMutate) return
     let values: FormValues
     try {
       values = await form.validateFields()
@@ -126,6 +132,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
       title={editing ? t('actions.edit') : t('actions.create')}
       onCancel={onClose}
       onOk={() => void save()}
+      okButtonProps={{disabled: !mayMutate}}
       okText={t('common.save')}
       confirmLoading={saving}
       destroyOnHidden
@@ -138,7 +145,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
         },
       }}
     >
-      <Form<FormValues> form={form} layout="vertical">
+      <Form<FormValues> disabled={!mayMutate} form={form} layout="vertical">
         <Form.Item label={t('fields.editorScope')} required shouldUpdate>
           {() => (
             <ScopeSelects

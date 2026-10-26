@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -73,8 +75,9 @@ describe('RegistryPage', () => {
       dispatchEvent: vi.fn(),
     }))
     setDdcUnauthorizedHandler(() => {})
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn((input) => {
-      const url = String(input)
+      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
       if (url.includes('/registry/services/page')) {
         return Promise.resolve(jsonResponse(pageRecord([service], 12)))
       }

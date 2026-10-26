@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -51,6 +53,8 @@ type AppFormValues = {
 
 export default function AppsPage() {
   const { t, locale } = usePageMessages('tianshu.apps')
+  const fieldsWritable = useDdcWritable('DdcAppBO')
+  const mayMutate = useDdcPermission('tianshu.button.AppsPage.write') && fieldsWritable
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -202,7 +206,7 @@ export default function AppsPage() {
       render: (_: unknown, row: DdcApp) => (
         <Switch
           checked={row.enabled}
-          disabled={toggleMutation.isPending
+          disabled={!mayMutate || toggleMutation.isPending
             && toggleMutation.variables?.item.id === row.id}
           onChange={(enabled) => toggleMutation.mutate({ item: row, enabled })}
         />
@@ -220,12 +224,12 @@ export default function AppsPage() {
       fixed: 'right' as const,
       render: (_: unknown, row: DdcApp) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
-          <Popconfirm
+          <PermissionButton resourceKey="tianshu.button.AppsPage.write" size="small" onClick={() => openEdit(row)}>{t('common.edit')}</PermissionButton>
+          <Popconfirm disabled={!mayMutate}
             title={t('confirm.delete', { code: row.appCode })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger>{t('common.delete')}</Button>
+            <PermissionButton resourceKey="tianshu.button.AppsPage.write" size="small" danger>{t('common.delete')}</PermissionButton>
           </Popconfirm>
         </Space>
       ),
@@ -237,7 +241,7 @@ export default function AppsPage() {
       <AdminPageHeader
         title={t('title')}
         description={t('description')}
-        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
+        extra={<PermissionButton resourceKey="tianshu.button.AppsPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -290,12 +294,13 @@ export default function AppsPage() {
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
-        onOk={() => { void save() }}
+        onOk={() => { if (mayMutate) void save() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form<AppFormValues>
+        <Form<AppFormValues> disabled={!mayMutate}
           form={form}
           layout="vertical"
           initialValues={{ enabled: true }}

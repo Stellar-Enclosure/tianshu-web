@@ -1,3 +1,4 @@
+import {PermissionButton} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -168,13 +169,13 @@ export default function CachePage() {
           >
             {t('actions.check')}
           </Button>
-          <Button
+          <PermissionButton resourceKey="tianshu.button.CachePage.cache"
             danger
             loading={rebuildMutation.isPending}
             onClick={confirmRebuild}
           >
             {t('actions.rebuild')}
-          </Button>
+          </PermissionButton>
         </Space>
       </Card>
       {submitted !== null && (

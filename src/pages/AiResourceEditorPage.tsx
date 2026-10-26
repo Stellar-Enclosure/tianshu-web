@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileTextOutlined, FolderOpenOutlined, FolderOutlined } from '@ant-design/icons'
 import {
@@ -151,6 +153,8 @@ const failureText = (error: unknown, t: AdminTranslate): string => {
 
 export default function AiResourceEditorPage() {
   const { t, locale } = usePageMessages('tianshu.ai.editor')
+  const fieldsWritable = useDdcWritable('DdcAiDraftCommand')
+  const mayMutate = useDdcPermission('tianshu.button.AiResourceEditorPage.ai_write') && fieldsWritable
   const { message, modal } = App.useApp()
   const { error: authError, registerUnsavedChangesGuard } = useAuth()
   const { id = '' } = useParams()
@@ -227,6 +231,7 @@ export default function AiResourceEditorPage() {
   const blocker = useBlocker(shouldBlock)
 
   const updateDraft = (update: (current: DraftBuffer) => DraftBuffer) => {
+    if (!mayMutate) return
     setBuffer((current) => current ? update(current) : current)
     setSaveFailure(undefined)
   }
@@ -277,7 +282,7 @@ export default function AiResourceEditorPage() {
   const selectedNode = buffer?.draft.nodes.find((node) => node.path === selectedPath)
   const directories = buffer?.draft.nodes.filter((node) => node.nodeType === 'DIRECTORY') ?? []
   const visibleTree = useMemo(() => treeData(buffer?.draft.nodes ?? [], t), [buffer?.draft.nodes, t])
-  const writable = baseline !== null && buffer !== null && !resourceQuery.isError
+  const writable = mayMutate && baseline !== null && buffer !== null && !resourceQuery.isError
 
   const selectedParent = selectedNode?.nodeType === 'DIRECTORY'
     ? selectedNode.path
@@ -391,6 +396,7 @@ export default function AiResourceEditorPage() {
   }
 
   const saveDraft = () => {
+    if (!mayMutate) return
     if (!buffer || !baseline || resourceQuery.isError || saveMutation.isPending || !isDirty) return
     setSaveFailure(undefined)
     saveMutation.mutate({ current: buffer, expectedRevision: baseline.resource.revision })
@@ -448,9 +454,9 @@ export default function AiResourceEditorPage() {
         extra={(
           <Space wrap>
             <Button onClick={() => navigate(toListUrl(resource))}>{t('editor.backToList')}</Button>
-            <Button danger onClick={confirmDeleteResource} disabled={!writable || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || deleteMutation.isPending}>
+            <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" danger onClick={confirmDeleteResource} disabled={!writable || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || deleteMutation.isPending}>
               {t('editor.deleteResource')}
-            </Button>
+            </PermissionButton>
           </Space>
         )}
       />
@@ -522,7 +528,7 @@ export default function AiResourceEditorPage() {
               <Space orientation="vertical" size="large" className="tianshu-ai-page">
                 {resource.kind === 'PROMPT' ? (
                   <Card title={t('editor.promptPlainText')}>
-                    <Input.TextArea
+                    <Input.TextArea readOnly={!mayMutate}
                       aria-label={t('editor.promptContent')}
                       rows={20}
                       value={buffer.draft.promptText ?? ''}
@@ -536,11 +542,11 @@ export default function AiResourceEditorPage() {
                   <div className="tianshu-ai-skill-editor">
                     <Card title={t('editor.skillTree')} className="tianshu-ai-skill-editor__tree">
                       <Space wrap className="tianshu-ai-skill-editor__actions">
-                        <Button onClick={() => openNewNode('new-file')}>{t('editor.addFile')}</Button>
-                        <Button onClick={() => openNewNode('new-directory')}>{t('editor.addDirectory')}</Button>
-                        <Button onClick={openMove} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.move')}</Button>
-                        <Button onClick={openRename} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.rename')}</Button>
-                        <Button danger onClick={confirmDeleteNode} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.deleteNode')}</Button>
+                        <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" onClick={() => openNewNode('new-file')}>{t('editor.addFile')}</PermissionButton>
+                        <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" onClick={() => openNewNode('new-directory')}>{t('editor.addDirectory')}</PermissionButton>
+                        <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" onClick={openMove} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.move')}</PermissionButton>
+                        <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" onClick={openRename} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.rename')}</PermissionButton>
+                        <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write" danger onClick={confirmDeleteNode} disabled={!selectedNode || selectedNode.path === ''}>{t('editor.deleteNode')}</PermissionButton>
                       </Space>
                       <Tree
                         aria-label={t('editor.skillTree')}
@@ -566,7 +572,7 @@ export default function AiResourceEditorPage() {
                     </Card>
                     <Card title={selectedNode?.nodeType === 'FILE' ? selectedPath : t('editor.selectFile')} className="tianshu-ai-skill-editor__content">
                       {selectedNode?.nodeType === 'FILE' ? (
-                        <Input.TextArea
+                        <Input.TextArea readOnly={!mayMutate}
                           aria-label={t('editor.fileContent', { path: selectedPath })}
                           rows={22}
                           value={selectedNode.content ?? ''}
@@ -587,14 +593,14 @@ export default function AiResourceEditorPage() {
                   </div>
                 )}
                 <Space>
-                  <Button
+                  <PermissionButton resourceKey="tianshu.button.AiResourceEditorPage.ai_write"
                     type="primary"
                     onClick={saveDraft}
-                    disabled={!isDirty || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || conflict}
+                    disabled={!mayMutate || !isDirty || resourceQuery.isError || pendingVersionOperation || saveMutation.isPending || conflict}
                     loading={saveMutation.isPending}
                   >
                     {t('editor.saveDraft')}
-                  </Button>
+                  </PermissionButton>
                   <Button
                     disabled={!isDirty || saveMutation.isPending}
                     onClick={() => {
@@ -659,7 +665,7 @@ export default function AiResourceEditorPage() {
         destroyOnHidden
       >
         {nodeDialog?.operation === 'move' ? (
-          <Form layout="vertical">
+          <Form disabled={!mayMutate} layout="vertical">
             <Form.Item label={t('editor.targetDirectory')} help={t('editor.targetDirectoryHint')}>
               <Input
                 aria-label={t('editor.targetDirectory')}
@@ -672,7 +678,7 @@ export default function AiResourceEditorPage() {
             </Typography.Text>
           </Form>
         ) : (
-          <Form layout="vertical">
+          <Form disabled={!mayMutate} layout="vertical">
             <Form.Item
               label={nodeDialog?.operation === 'rename' ? t('editor.newPath')
                 : nodeDialog?.operation === 'new-directory' ? t('editor.directoryPath') : t('editor.filePath')}

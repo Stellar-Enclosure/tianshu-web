@@ -2,8 +2,7 @@
 
 [English](README.md) | [Tianshu 服务端](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/README.zh-CN.md)
 
-Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制台。它只与 Tianshu Admin
-通信，不直接调用其他组件。
+Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制台。它通过固定 EDGE 应用入口访问 Tianshu Admin，身份与权限视图均由服务端提供。
 
 ## 功能页面
 
@@ -12,6 +11,7 @@ Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制�
 | `/registry` | 按完整作用域查询服务目录，并按需加载实例 |
 | `/configs`、`/publish-tasks` | YAML 编辑、版本、发布/回滚及发布任务结果/重试 |
 | `/bizs`、`/apps`、`/namespaces`、`/envs`、`/bindings` | 作用域元数据与绑定维护 |
+| `/metadata/resources` | 按七类资源、权限代码、来源与版本检索只读目录，并打开对应文案引用 |
 | `/metadata/i18n` | 企业元数据中心：页面/公共多语种词条编辑、保存草稿、发布及语言包渲染预览 |
 | `/instances`、`/cache` | 配置客户端实例、缓存一致性检查与重建 |
 | `/ai/prompts`、`/ai/skills`、`/ai/resources/:id` | Prompt/Skill 草稿与文件编辑、版本发布/回滚、跨 scope 推广、使用反馈与优化 |
@@ -20,56 +20,45 @@ Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制�
 
 ## 认证
 
-控制台通过 `@stellar-enclosure/stellar-enclosure-web-shared` 的 `createGatewayAuthClient` 走平台统一
-身份登录；登录跳转到配置的 Edge OIDC registration（默认 `/oauth2/authorization/edge-tianshu`，可通过 `VITE_OAUTH_REGISTRATION_ID` 覆盖）。Edge 在
-服务端保管 OAuth Token，并给浏览器 `HttpOnly` 会话 Cookie；浏览器不会提交租户、用户名或密码，
-也不会保存 AT/RT。
+控制台使用共享 SDK 的固定应用协议。默认别名为 `edge-tianshu`，身份入口是 `/apps/edge-tianshu/auth/identity`，当前权限视图来自 `/apps/edge-tianshu/api/v1/authorization/effective-permissions`。浏览器只持有 `HttpOnly` 会话 Cookie，不存储或转发 AT/RT；所有写请求使用同一应用的 CSRF 证明，业务请求不会自动重放。
 
-因此控制台不持有 Access Token，也不发送 `Authorization` 头；API 请求通过 Edge 会话与 BFF Token
-Relay。身份与权限来自 `GET /api/v1/tianshu/auth/bootstrap`，只有响应授予 `TIANSHU_READ` 时
-控制台才算已授权。收到 401 时清空本地 bootstrap 状态并回到登录页。
+`TIANSHU_READ` 决定控制台准入；49 个 APP、PAGE、MENU、BUTTON 声明覆盖现有路由、菜单及写操作，统一调用共享 guard。权限视图绑定 issuer、subject、tenant、完整目录范围、目录/授权/策略版本、活动角色与请求 epoch。过期、身份或租户变化时清空旧视图、查询缓存及迟到响应；未保存提示只保护主动离开，不能阻止安全失效。
 
-## 页面多语种管理
+`src/permissions/fieldReferences.ts` 声明 95 个真实后端输入字段引用。宿主 `/api/v1/authorization/field-catalog` 返回字段策略及实际 `inputBinding`，共享 `evaluateFieldAccess` 决定编辑状态。完整替换表单只有在所有提交字段可写时才启用，避免缺失字段造成业务数据被覆盖。缺失、过期、目录不匹配或只读投影均保持只读，最终权限仍由后端执行。
 
-进入“元数据管理 → 企业元数据中心”，选择已有的业务域、命名空间、环境和应用绑定。
-新建页面时设置稳定的 `pageCode`（如 `order.list`），以 `common` 创建同作用域的公共文案。
-在词条表格维护 key、默认语言和其他语言；其他语言留空表示使用默认语言文案。
-保存草稿后再发布，消费端只能读取发布结果。版本冲突会保留本地编辑，需要显式重新加载服务器草稿后再处理。
+## 页面多语种与资源目录
 
-已发布预览调用真实语言包接口并通过共享 SDK 渲染，同时展示对应 JSON。
-Tianshu 现有全部业务路由、导航、登录提示、表单、弹窗和通用组件文案已接入中心。
-界面语言切换会先加载目标语言包再切换，不重建页面、不清空未保存输入。语言包使用服务端固定的
-管理台作用域，不受业务列表筛选条件影响。
+资源目录只读展示 APP、MENU、PAGE、BUTTON、API、METHOD、FIELD、权限组合、字段策略、生产者和来源版本，不允许在数据库界面改写代码权限。选择业务、应用、命名空间和环境时必须同时提供目录范围 ID 与激活版本；文案引用会携带完整目标进入翻译编辑器。
 
-点击“查看管理台语言包”即可定位该作用域。业务域、应用、命名空间、环境及绑定就绪后，
-“初始化默认文案”只创建并发布缺失语言包，保留所有已有页面和草稿。初始化之前由中心返回内置默认词条；
-企业已发布配置优先。发布该作用域的文案后会刷新当前界面，也可使用顶部的文案刷新按钮。
-登录前只读取中心公开的静态登录包，不读取任何企业数据。
-管理端需要 `TIANSHU_READ`，编辑需要 `TIANSHU_WRITE`，发布需要 `TIANSHU_PUBLISH`；
-这些 OAuth scopes 和对应授权能力须同时授予，Edge 的登录 scope 配置也须包含所需操作。
-仅消费语言包的业务前端可使用独立的 `TIANSHU_I18N_READ`，不必授予配置管理权限。
+编辑器先加载代码已有的源页面，对照源默认文案、草稿覆盖和已发布覆盖，逐项确认全部当前源哈希后再保存。源 key 和源默认语言不可编辑；空覆盖回退到源文案，占位符集合必须与源文案一致。保存携带草稿 revision、目录激活版本及完整 reviewedSourceHashes；冲突保留本地内容，待显式比较后重载基线。
 
-详细接口、迁移和消费规则见服务端 [页面多语种使用说明](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/docs/page-i18n.md)，
-共享加载器的接入示例见 [Web SDK](https://github.com/Stellar-Enclosure/web-sdk/tree/main/packages/stellar-enclosure-web-shared)。
-本地验证必须使用同次变更构建的 Web SDK；可使用下方仓库 README 中的本地消费验证流程。
+发布使用一个固定 operationId。结果不确定时可查询该操作，或显式重试同一个操作，不自动重放、不生成替代操作。已发布预览校验返回的完整目标、租户和目录版本。管理台自身文案由共享加载器使用完整权限 binding 加载；匿名登录包只来自固定公共入口，不伪造企业身份或权限视图。
 
-默认词条唯一源位于服务端 `src/main/resources/i18n/tianshu-admin`，前端生产代码不打包业务词典。
-`src/test/i18nCatalogs.json` 仅用于测试，通过 `node scripts/sync-i18n-fixtures.mjs` 同步；
-同级存在服务端仓库时，可用 `node scripts/sync-i18n-fixtures.mjs --check` 检查一致性。
+源默认文案来自服务端 Java 声明与前端 `defineMessages` 声明的编译清单。旧的“初始化默认文案”接口不能再用来创建源元数据。服务端规则见 [页面多语种使用说明](https://github.com/Stellar-Enclosure/tianshu-service/blob/main/docs/page-i18n.md)。测试词典通过明确指定的后端编译清单同步：
+
+```bash
+node scripts/sync-i18n-fixtures.mjs --manifest /path/to/tianshu/manifest-v1.json
+node scripts/sync-i18n-fixtures.mjs --manifest /path/to/tianshu/manifest-v1.json --check
+```
 
 ## 开发
+
+需要 Node 24、实际安装的同批共享 SDK 包，以及锁文件指定的工具链检出和 RC 制品。不存在源码 alias 或缺失工具时绕过校验的构建路径。
 
 ```bash
 npm ci
 npm run typecheck
-npm test -- --run
+npm test
 npm run lint
-npm run build
+PAC_SDK_DIR=/path/to/pinned/web-sdk \
+PAC_TOOLCHAIN_LOCK=/path/to/permission-toolchain.lock.json \
+PAC_CONTRACT_ARTIFACT=/path/to/verified-contract.jar \
+PAC_BUILD_ID=release-build-id npm run build
 ```
 
-`npm run dev` 绑定 `http://127.0.0.1:18152`（`strictPort`），把 `/oauth2`、`/bff` 和 `/login/oauth2`
-OIDC 回调代理到 Edge 网关，并把 `/api` 代理到 Tianshu Admin 前的网关。上游可分别用 `TIANSHU_AUTH_PROXY` 和
-`TIANSHU_ADMIN_PROXY` 覆盖；认证上游应指向 Edge。`npm run preview` 复用同一张代理表。
+唯一构建入口依次执行 contract prepare、静态扫描/校验、TypeScript 与 Vite，并嵌入 `permission-build.json`、生成 `.generated/permissions/artifact-record.json`。`LOCAL_UNCOMMITTED` 只表示同批源码验证；生产交付使用 `PINNED_COMMIT`、固定提交、匹配的依赖锁与明确 buildId。
+
+构建时必须设置 `VITE_PERMISSION_NAMESPACE`、`VITE_PERMISSION_ENVIRONMENT`，匹配宿主固定目录。`VITE_OAUTH_APP_ALIAS` 默认 `edge-tianshu`；`VITE_YUHENG_ORIGIN` 为 EDGE origin，`VITE_BASE_PATH` 为静态挂载路径。`npm run dev` 与 preview 将 `/apps` 交给 `TIANSHU_AUTH_PROXY`，默认 `http://127.0.0.1:18180`。
 
 注册中心首次请求会携带完整四级作用域。本地作用域不是
 `default / default-app / dev / default` 时，可设置以下构建时默认值：
@@ -87,23 +76,21 @@ npm run dev
 
 ## 运行时配置
 
-浏览器通过 static-server 的 `/api` 反向代理访问 Tianshu Admin。用
-`TIANSHU_ADMIN_API_BASE_URL` 指向管理端后端：
+Dockerfile 使用 Node 24，仅接收经过上述门禁的 **预构建 `dist/`**；镜像内不重新构建。启动时检查 `permission-build.json` 的生产者和应用绑定。源码验证没有启动服务、容器或浏览器。
+
+static-server 仅将固定 `/apps/<alias>/` 路径转发给固定 EDGE 上游，查询参数不能选择上游。构建时与运行时的 alias 必须相同。
 
 | 变量 | 默认值 | 含义 |
 |---|---|---|
-| `PORT` | `8080` | static-server 的 HTTP 端口 |
-| `TIANSHU_ADMIN_API_BASE_URL` | `http://tianshu-admin:18080` | `/api` 代理的 Tianshu Admin 上游 |
-| `TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT` | `false` | 允许明文 HTTP 上游，必须显式设为 `true` |
-| `TIANSHU_ADMIN_API_TLS_CA_PATH` | — | mTLS 上游的 CA 文件（`https:` 上游必填） |
-| `TIANSHU_ADMIN_API_TLS_CERTIFICATE_PATH` | — | mTLS 上游的客户端证书 |
-| `TIANSHU_ADMIN_API_TLS_PRIVATE_KEY_PATH` | — | mTLS 上游的客户端私钥 |
+| `PORT` | `8080` | static-server 端口 |
+| `TIANSHU_EDGE_BASE_URL` | `http://edge:18180` | 固定 EDGE 上游；旧 `TIANSHU_ADMIN_API_BASE_URL` 作为配置别名保留 |
+| `TIANSHU_EDGE_APP_ALIAS` | `edge-tianshu` | 固定应用路径别名 |
+| `TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT` | `false` | 显式允许开发环境 HTTP 上游 |
+| `TIANSHU_ADMIN_API_TLS_CA_PATH` | — | HTTPS 上游 CA 文件 |
+| `TIANSHU_ADMIN_API_TLS_CERTIFICATE_PATH` | — | mTLS 客户端证书 |
+| `TIANSHU_ADMIN_API_TLS_PRIVATE_KEY_PATH` | — | mTLS 客户端私钥 |
 
-static-server 遇到 `http:` 上游且未开启明文开关时会快速失败，但随仓 `Dockerfile` 已把
-`TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT=true` 固化进镜像供本地使用；真实 TLS 环境必须
-取消或覆盖该变量。
-
-不要把凭据写进提交的 `.env` 文件。TLS 终结与 Tianshu Admin 的授权策略属于部署职责。
+本仓库是私有前端应用，只交付静态制品，不发布 npm/Maven 包。真实 EDGE、身份提供方、Tianshu 数据库和浏览器端到端验收由部署环境执行；离线测试与构建不等于运行时验收。
 
 ## 作用域模型
 
@@ -136,16 +123,14 @@ static-server 遇到 `http:` 上游且未开启明文开关时会快速失败，
 
 ## 部署
 
+先完成上面的受管构建，再制作镜像：
+
 ```bash
-docker build -t egon-cola/tianshu-admin-web .
-docker run --rm -p 8080:8080 \
-  -e TIANSHU_ADMIN_API_BASE_URL=http://tianshu-admin:18080 \
-  -e TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT=true \
-  egon-cola/tianshu-admin-web
+docker build -t stellar-enclosure/tianshu-web .
 ```
 
-健康检查：`GET /healthz` 返回 `ok`。
+`GET /healthz` 返回 `ok`。真实运行时配置固定 EDGE 上游与 TLS；前端应用只交付静态制品，不发布到 Maven Central 或 npm。
 
 ## 独立仓库发布
 
-发布范围、前置配置、校验与发布命令见 [仓库 README](README.md#application-delivery-no-package-publication)。应用和测试示例不发布到 Maven Central，前端站点保持 `private: true`。
+发布范围、前置配置与校验命令见 [仓库 README](README.md#application-delivery-no-package-publication)。

@@ -1,4 +1,5 @@
-import { Button, Form, Input, Pagination, Select, Space, Typography } from 'antd'
+import type {DdcI18nPage} from '../api/i18n'
+import { Checkbox, Button, Form, Input, Pagination, Select, Space, Typography } from 'antd'
 import { useState } from 'react'
 import type { I18nDraftBuffer, I18nEntry } from '../lib/i18nDraft'
 import { normalizeI18nLocale } from '../lib/i18nDraft'
@@ -6,13 +7,16 @@ import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminMessageError } from '../i18n/errors'
 
 type Props = {
+  source: DdcI18nPage | null
+  reviewedSourceHashes: Record<string, string>
+  onReview: (value: Record<string, string>) => void
   value: I18nDraftBuffer
   onChange: (value: I18nDraftBuffer) => void
   disabled: boolean
   onError: (error: unknown) => void
 }
 
-export default function I18nDraftForm({ value, onChange, disabled, onError }: Props) {
+export default function I18nDraftForm({ value, source, reviewedSourceHashes, onReview, onChange, disabled, onError }: Props) {
   const {t} = usePageMessages('tianshu.i18n')
   const [newLocale, setNewLocale] = useState('')
   const [entryPage, setEntryPage] = useState(1)
@@ -50,7 +54,7 @@ export default function I18nDraftForm({ value, onChange, disabled, onError }: Pr
             onChange={(event) => onChange({ ...value, name: event.target.value })} />
         </Form.Item>
         <Form.Item label={t('fields.defaultLocale')} required>
-          <Select aria-label={t('fields.defaultLocale')} value={value.defaultLocale}
+          <Select disabled={disabled || source !== null} aria-label={t('fields.defaultLocale')} value={value.defaultLocale}
             options={value.locales.map((locale) => ({ value: locale, label: locale }))}
             onChange={(defaultLocale) => onChange({ ...value, defaultLocale })} />
         </Form.Item>
@@ -66,6 +70,7 @@ export default function I18nDraftForm({ value, onChange, disabled, onError }: Pr
       <div style={{ overflowX: 'auto', width: '100%' }}>
         <table aria-label={t('entries.label')} className="tianshu-i18n-entries" style={{ minWidth: 320 + value.locales.length * 280 }}>
           <thead><tr>
+            <th scope="col">{t('source.review')}</th>
             <th scope="col" style={{ width: 220 }}>{t('fields.key')}</th>
             {value.locales.map((locale) => <th key={locale} scope="col" style={{ width: 280 }}>
               <Space>
@@ -78,10 +83,16 @@ export default function I18nDraftForm({ value, onChange, disabled, onError }: Pr
           </tr></thead>
           <tbody>
             {value.entries.slice(entryOffset, entryOffset + 20).map((entry, index) => <tr key={entry.id}>
+              <td><Checkbox disabled={disabled || !source?.sourceHashes[entry.key]}
+                checked={!!source?.sourceHashes[entry.key] && reviewedSourceHashes[entry.key] === source.sourceHashes[entry.key]}
+                onChange={event => onReview({...reviewedSourceHashes, [entry.key]: event.target.checked ? source!.sourceHashes[entry.key] : ''})}
+                aria-label={t('source.reviewKey', {key: entry.key})} /></td>
               <td><Input aria-label={t('entries.keyLabel', { index: entryOffset + index + 1 })} placeholder={t('placeholders.key')} maxLength={128}
-                disabled={disabled} value={entry.key}
+                disabled value={entry.key}
                 onChange={(event) => updateEntry(entry.id, (current) => ({ ...current, key: event.target.value }))} /></td>
               {value.locales.map((locale) => <td key={locale}>
+                <Typography.Paragraph type="secondary">{t('source.default')}<br />{source?.sourceDefaults[locale]?.[entry.key] ?? '—'}</Typography.Paragraph>
+                <Typography.Paragraph type="secondary">{t('source.published')}<br />{source?.publishedTranslations[locale]?.[entry.key] ?? '—'}</Typography.Paragraph>
                 <Input.TextArea aria-label={t('entries.textLabel', { index: entryOffset + index + 1, locale })} rows={2} maxLength={8192}
                   disabled={disabled} value={entry.values[locale] ?? ''}
                   placeholder={locale === value.defaultLocale ? t('placeholders.defaultText') : t('placeholders.translatedText')}
@@ -90,11 +101,11 @@ export default function I18nDraftForm({ value, onChange, disabled, onError }: Pr
                   }))} />
               </td>)}
               <td><Button danger disabled={disabled} aria-label={t('entries.deleteLabel', { index: entryOffset + index + 1 })}
-                onClick={() => onChange({ ...value, entries: value.entries.filter((item) => item.id !== entry.id) })}>
+                onClick={() => onChange({ ...value, entries: value.entries.map(item => item.id === entry.id ? {...item, values: {}} : item) })}>
                 {t('common.delete')}
               </Button></td>
             </tr>)}
-            {value.entries.length === 0 && <tr><td colSpan={value.locales.length + 2}>
+            {value.entries.length === 0 && <tr><td colSpan={value.locales.length + 3}>
               <Typography.Text type="secondary">{t('empty.entries')}</Typography.Text>
             </td></tr>}
           </tbody>
@@ -102,16 +113,6 @@ export default function I18nDraftForm({ value, onChange, disabled, onError }: Pr
       </div>
       <Pagination current={currentPage} pageSize={20} total={value.entries.length} showSizeChanger={false}
         hideOnSinglePage onChange={setEntryPage} showTotal={(total) => t('entries.total', { total })} />
-      <Button disabled={disabled || value.entries.length >= 2000} onClick={() => {
-        setEntryPage(Math.ceil((value.entries.length + 1) / 20))
-        onChange({
-          ...value,
-          entries: [...value.entries, {
-            id: value.entries.reduce((max, entry) => Math.max(max, entry.id), -1) + 1,
-            key: '', values: {},
-          }],
-        })
-      }}>{t('actions.addEntry')}</Button>
     </Space>
   )
 }

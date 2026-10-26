@@ -1,4 +1,4 @@
-import type { DdcI18nDraft, DdcI18nTranslations } from '../api/i18n'
+import type { DdcI18nDraft, DdcI18nTranslations, DdcI18nPage } from '../api/i18n'
 import { AdminMessageError } from '../i18n/errors'
 
 export type I18nEntry = { id: number; key: string; values: Record<string, string> }
@@ -35,6 +35,14 @@ export const i18nDraftToBuffer = (draft: DdcI18nDraft): I18nDraftBuffer => {
   }
 }
 
+export const i18nPageToBuffer = (page: DdcI18nPage): I18nDraftBuffer => {
+  const buffer = i18nDraftToBuffer(page)
+  const locales = [...new Set([...buffer.locales, ...Object.keys(page.sourceDefaults)])]
+  const keys = [...new Set([...Object.keys(page.sourceHashes), ...buffer.entries.map(entry => entry.key)])].sort()
+  return {...buffer, locales, entries: keys.map((key, id) => ({id, key,
+    values: Object.fromEntries(locales.map(locale => [locale, page.translations[locale]?.[key] ?? '']))}))}
+}
+
 const placeholders = (value: string): string => {
   const pattern = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g
   const remaining = value.replace(pattern, '')
@@ -44,7 +52,7 @@ const placeholders = (value: string): string => {
   return [...new Set([...value.matchAll(pattern)].map((match) => match[1]))].sort().join('|')
 }
 
-export const i18nBufferToDraft = (buffer: I18nDraftBuffer): DdcI18nDraft => {
+export const i18nBufferToDraft = (buffer: I18nDraftBuffer, sourceDefaults?: DdcI18nTranslations): DdcI18nDraft => {
   if (buffer.name.trim() === '' || buffer.name.trim().length > 128) {
     throw new AdminMessageError('validation.name')
   }
@@ -65,7 +73,11 @@ export const i18nBufferToDraft = (buffer: I18nDraftBuffer): DdcI18nDraft => {
     }
     if (keys.has(key)) throw new AdminMessageError('validation.duplicateKey', { key })
     keys.add(key)
-    const source = entry.values[buffer.defaultLocale] ?? ''
+    if (sourceDefaults && !Object.values(sourceDefaults).some(values => Object.hasOwn(values, key))) {
+      if (Object.values(entry.values).every(value => !value.trim())) continue
+      throw new AdminMessageError('validation.key', {key})
+    }
+    const source = sourceDefaults ? (sourceDefaults[defaultLocale]?.[key] ?? Object.values(sourceDefaults).find(values => values[key] !== undefined)?.[key] ?? '') : entry.values[buffer.defaultLocale] ?? ''
     if (!source.trim()) throw new AdminMessageError('validation.defaultText', { locale: defaultLocale, key })
     for (const [index, locale] of locales.entries()) {
       const text = entry.values[buffer.locales[index]] ?? ''

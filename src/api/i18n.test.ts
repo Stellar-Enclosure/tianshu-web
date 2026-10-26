@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { beginDdcSession, setDdcExpectedTenantId } from './client'
 import {
@@ -6,19 +8,23 @@ import {
 } from './i18n'
 
 const scope = { bizCode: 'retail', namespaceCode: 'office', env: 'prod', appCode: 'orders' }
+const target = {...scope, catalogScopeId: '71001', catalogActivationVersion: '7'}
+const operationId = '00000000-0000-0000-0000-000000000001'
 const response = (data: unknown) => new Response(JSON.stringify({ success: true, data }), {
   headers: { 'Content-Type': 'application/json' },
 })
 
 describe('Tianshu page translation REST client', () => {
   beforeEach(() => {
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     beginDdcSession()
     setDdcExpectedTenantId('tenant-1')
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => url.endsWith('/bff/csrf')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => url.endsWith('/auth/csrf')
       ? new Response(JSON.stringify({headerName: 'X-CSRF-TOKEN', token: 'test-csrf'})) : response({})))
   })
   afterEach(() => {
     setDdcExpectedTenantId(undefined)
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -28,41 +34,41 @@ describe('Tianshu page translation REST client', () => {
     expect(await pageI18nPages({ ...scope, pageNo: 2 })).toMatchObject({ records: [{ id: '71' }], page })
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     const request = new URL(String(url), 'https://test.local')
-    expect(request.pathname).toBe('/api/v1/tianshu/i18n/pages')
+    expect(request.pathname).toBe('/apps/edge-tianshu/api/v1/tianshu/i18n/pages')
     expect(Object.fromEntries(request.searchParams)).toEqual({ ...scope, pageNo: '2', pageSize: '20' })
     expect((init?.headers as Headers).get('X-Egon-Tianshu-Tenant')).toBe('tenant-1')
   })
 
   it('creates and reads drafts without converting large ids to numbers', async () => {
-    const command = { ...scope, pageCode: 'common', name: '公共文案', defaultLocale: 'zh-CN', translations: { 'zh-CN': {} } }
+    const command = { ...target, reviewedSourceHashes: {}, pageCode: 'common', name: '公共文案', defaultLocale: 'zh-CN', translations: { 'zh-CN': {} } }
     await createI18nPage(command)
-    expect(fetch).toHaveBeenLastCalledWith('/api/v1/tianshu/i18n/pages', expect.objectContaining({
+    expect(fetch).toHaveBeenLastCalledWith('/apps/edge-tianshu/api/v1/tianshu/i18n/pages', expect.objectContaining({
       method: 'POST', body: JSON.stringify(command),
     }))
-    await getI18nPage('9223372036854775807')
-    expect(fetch).toHaveBeenLastCalledWith('/api/v1/tianshu/i18n/pages/9223372036854775807', expect.anything())
+    await getI18nPage('9223372036854775807', '7')
+    expect(fetch).toHaveBeenLastCalledWith('/apps/edge-tianshu/api/v1/tianshu/i18n/pages/9223372036854775807?catalogActivationVersion=7', expect.anything())
   })
 
   it('saves and publishes using exact revision strings', async () => {
-    const command = { expectedRevision: '9223372036854775807', name: '订单', defaultLocale: 'zh-CN',
+    const command = { catalogActivationVersion: '7', reviewedSourceHashes: {title: 'a'.repeat(64)}, expectedRevision: '9223372036854775807', name: '订单', defaultLocale: 'zh-CN',
       translations: { 'zh-CN': { title: '订单' } } }
     await replaceI18nDraft('71', command)
-    expect(fetch).toHaveBeenLastCalledWith('/api/v1/tianshu/i18n/pages/71/draft', expect.objectContaining({
+    expect(fetch).toHaveBeenLastCalledWith('/apps/edge-tianshu/api/v1/tianshu/i18n/pages/71/draft', expect.objectContaining({
       method: 'PUT', body: JSON.stringify(command),
     }))
-    await publishI18nPage('71', command.expectedRevision)
-    expect(fetch).toHaveBeenLastCalledWith('/api/v1/tianshu/i18n/pages/71/publish', expect.objectContaining({
-      method: 'POST', body: JSON.stringify({ expectedRevision: command.expectedRevision }),
+    await publishI18nPage('71', command.expectedRevision, operationId)
+    expect(fetch).toHaveBeenLastCalledWith('/apps/edge-tianshu/api/v1/tianshu/i18n/pages/71/publish', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ expectedRevision: command.expectedRevision, operationId }),
     }))
-    expect(() => publishI18nPage('71', '1e3')).toThrow('decimal Long string')
-    expect(() => getI18nPage('9223372036854775808')).toThrow('decimal Long string')
+    expect(() => publishI18nPage('71', '1e3', operationId)).toThrow('decimal Long string')
+    expect(() => getI18nPage('9223372036854775808', '7')).toThrow('decimal Long string')
   })
 
   it('reads a published bundle by page and locale with a tenant-separated cache key', async () => {
-    const params = { ...scope, pageCode: 'order.list', locale: 'en-US' }
+    const params = { ...target, pageCode: 'order.list', locale: 'en-US' }
     await getI18nBundle(params)
     const request = new URL(String(vi.mocked(fetch).mock.calls[0][0]), 'https://test.local')
-    expect(request.pathname).toBe('/api/v1/tianshu/i18n/bundle')
+    expect(request.pathname).toBe('/apps/edge-tianshu/api/v1/tianshu/i18n/bundle')
     expect(Object.fromEntries(request.searchParams)).toEqual(params)
     const first = ddcI18nQueryKeys.bundle(params)
     setDdcExpectedTenantId('tenant-2')

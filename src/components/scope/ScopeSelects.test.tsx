@@ -31,7 +31,7 @@ const typeAndEnter = (input: HTMLInputElement, value: string): void => {
 
 const mockScopeEndpoints = (bizs: string[], apps: string[], nss: string[], envs: string[]): void => {
   vi.mocked(fetch).mockImplementation((input) => {
-    const url = String(input)
+    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
     if (url.includes('/bizs')) return Promise.resolve(jsonResponse(record(bizs.map((b) => ({ id: b, bizCode: b, bizName: b, description: '', enabled: true, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' })))))
     if (url.includes('/envs')) return Promise.resolve(jsonResponse(record(envs.map((e) => ({ id: e, envCode: e, description: e, sortOrder: 10, enabled: true, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' })))))
     if (url.includes('/apps')) return Promise.resolve(jsonResponse(record(apps.map(appPayload))))

@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Descriptions, Input, Modal, Space, Spin, Table, Tag, Tree, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -105,6 +107,9 @@ export default function AiVersionsPanel({
   onPendingOperationChange = () => {},
 }: Props) {
   const { t, locale } = usePageMessages('tianshu.ai.editor')
+  const publishWritable = useDdcWritable('DdcAiPublishCommand')
+  const rollbackWritable = useDdcWritable('DdcAiRollbackCommand')
+  const mayMutate = useDdcPermission('tianshu.button.AiVersionsPanel.ai_publish')
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -198,6 +203,7 @@ export default function AiVersionsPanel({
   }
 
   const submitRequest = async (request: PendingPublicationRequest): Promise<void> => {
+    if (!mayMutate || !(request.operation === 'PUBLISH' ? publishWritable : rollbackWritable)) return
     setPendingRequest(request)
     onPendingOperationChange(true)
     setActionFailure(undefined)
@@ -285,16 +291,16 @@ export default function AiVersionsPanel({
           <Button type="link" onClick={() => selectedHistoryVersion(row)}>
             {t('versions.readVersion', { version: row.versionNo })}
           </Button>
-          <Button
+          <PermissionButton resourceKey="tianshu.button.AiVersionsPanel.ai_publish"
             type="link"
-            disabled={resourceUnavailable || row.versionNo === resource.currentVersionNo || pendingRequest !== null}
+            disabled={!rollbackWritable || resourceUnavailable || row.versionNo === resource.currentVersionNo || pendingRequest !== null}
             onClick={() => confirmRollback(row)}
           >
             {t('versions.rollbackTo', { version: row.versionNo })}
-          </Button>
-          <Button type="link" disabled={resourceUnavailable || pendingRequest !== null} onClick={() => setPromotionSource(row)}>
+          </PermissionButton>
+          <PermissionButton resourceKey="tianshu.button.AiVersionsPanel.ai_write" type="link" disabled={resourceUnavailable || pendingRequest !== null} onClick={() => setPromotionSource(row)}>
             {t('versions.promote')}
-          </Button>
+          </PermissionButton>
         </Space>
       ),
     },
@@ -360,13 +366,13 @@ export default function AiVersionsPanel({
             <Space wrap>
               <Typography.Text code>{pendingRequest.requestId}</Typography.Text>
               <Button loading={verifyingRequest} onClick={() => void verifyPendingRequest()}>{t('versions.verifyRequest')}</Button>
-              <Button
+              <PermissionButton resourceKey="tianshu.button.AiVersionsPanel.ai_publish"
                 type="primary"
                 loading={publicationMutation.isPending}
                 onClick={() => void submitRequest(pendingRequest)}
               >
                 {t('versions.retryRequest')}
-              </Button>
+              </PermissionButton>
             </Space>
           )}
         />
@@ -381,17 +387,17 @@ export default function AiVersionsPanel({
               placeholder={t('versions.versionNotePlaceholder')}
               maxLength={512}
               value={changeNote}
-              disabled={pendingRequest !== null}
+              disabled={!mayMutate || pendingRequest !== null}
               onChange={(event) => setChangeNote(event.target.value)}
             />
-            <Button
+            <PermissionButton resourceKey="tianshu.button.AiVersionsPanel.ai_publish"
               type="primary"
-              disabled={draftDirty || resourceUnavailable || pendingRequest !== null}
+              disabled={!publishWritable || draftDirty || resourceUnavailable || pendingRequest !== null}
               loading={publicationMutation.isPending}
               onClick={confirmPublish}
             >
               {t('versions.publishDraft')}
-            </Button>
+            </PermissionButton>
           </Space>
         )}
       >
@@ -529,7 +535,7 @@ export default function AiVersionsPanel({
           : confirmedAction ? t('versions.confirmRollbackTitle', { version: confirmedAction.command.versionNo }) : ''}
         open={confirmedAction !== null}
         onCancel={() => setConfirmedAction(null)}
-        onOk={submitConfirmedAction}
+        onOk={() => { if (mayMutate) submitConfirmedAction() }}
         okText={confirmedAction?.operation === 'PUBLISH' ? t('versions.confirmPublish') : t('versions.confirmRollback')}
         cancelText={t('common.cancel')}
       >

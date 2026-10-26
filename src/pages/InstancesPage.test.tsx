@@ -76,7 +76,7 @@ const mockScopeEndpoints = (
   instances: (url: string) => Response | Promise<Response>,
 ): void => {
   vi.mocked(fetch).mockImplementation((input) => {
-    const url = String(input)
+    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
     if (url.includes('/instances/page')) return Promise.resolve(instances(url))
     if (url.includes('/bizs')) return Promise.resolve(jsonResponse(record([
       { bizCode: 'pay-biz', bizName: '支付域' },

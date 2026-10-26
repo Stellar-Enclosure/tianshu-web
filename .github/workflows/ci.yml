@@ -12,37 +12,80 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      PERMISSION_SDK_ROOT: ${{ github.workspace }}/workspace/web-sdk
+      PERMISSION_BUILD_ROOT: ${{ github.workspace }}/workspace/tianshu-web
+      PERMISSION_OUTPUT_ROOT: ${{ github.workspace }}/permission-temp/permission-results
+      PERMISSION_CONTRACT_ARTIFACT_FILE: ${{ github.workspace }}/permission-temp/permission-contract.jar
+      PERMISSION_CONTRACT_ARTIFACT_URL: ${{ vars.PERMISSION_CONTRACT_ARTIFACT_URL }}
+      PAC_SDK_DIR: ${{ github.workspace }}/workspace/web-sdk
+      PAC_TOOLCHAIN_LOCK: ${{ github.workspace }}/workspace/tianshu-web/permission-toolchain.lock.json
+      PAC_CONTRACT_ARTIFACT: ${{ github.workspace }}/permission-temp/permission-contract.jar
+      PAC_BUILD_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
         with:
-          repository: Stellar-Enclosure/tianshu-web
           path: workspace/tianshu-web
+          persist-credentials: false
+      - name: Verify permission delivery boundaries offline
+        working-directory: workspace/tianshu-web
+        run: python3 scripts/permission-ci.test.py
+      - name: Read the reviewed immutable toolchain commit
+        id: pin
+        working-directory: workspace/tianshu-web
+        run: |
+          sdk_commit=$(python3 scripts/permission-ci.py pin)
+          echo "commit=$sdk_commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          repository: Stellar-Enclosure/web-sdk
+          ref: ${{ steps.pin.outputs.commit }}
+          path: workspace/web-sdk
           token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: workspace/tianshu-web/package-lock.json
-      - uses: actions/checkout@v5
-        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP != 'false'
-        with:
-          repository: Stellar-Enclosure/web-sdk
-          path: workspace/web-sdk
-          token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
-          persist-credentials: false
-      - name: Build and test using source SDKs
-        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP != 'false'
-        run: |
-          node workspace/web-sdk/scripts/verify-consumers.mjs \
-            --workspace "$GITHUB_WORKSPACE/workspace" \
-            --cache "$HOME/.npm" \
-            --output "$RUNNER_TEMP/stellar-npm-release" \
-            --consumer tianshu-web --phase verify --online true
-      - name: Build and test using published SDKs
-        if: vars.STELLAR_USE_SOURCE_BOOTSTRAP == 'false'
+          cache-dependency-path: |
+            workspace/web-sdk/package-lock.json
+            workspace/tianshu-web/package-lock.json
+      - name: Install pinned tools
+        working-directory: workspace/web-sdk
+        run: npm ci
+      - name: Prepare the digest-pinned RC artifact
         working-directory: workspace/tianshu-web
         run: |
-          npm ci
-          npm run build
-          npm test -- --run --testTimeout=15000
+          python3 - <<'CHECK'
+          import os, urllib.parse
+          url = urllib.parse.urlsplit(os.environ['PERMISSION_CONTRACT_ARTIFACT_URL'])
+          if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+              raise SystemExit('A non-secret HTTPS contract artifact URL is required')
+          CHECK
+          mkdir -p "$(dirname "$PERMISSION_CONTRACT_ARTIFACT_FILE")"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-filesize 67108864 "$PERMISSION_CONTRACT_ARTIFACT_URL" --output "$PERMISSION_CONTRACT_ARTIFACT_FILE"
+          python3 scripts/permission-ci.py prepare
+      - name: Verify actual npm artifacts, complete frontend build and unit tests
+        run: |
+          node "$PAC_SDK_DIR/scripts/verify-consumers.mjs" \
+            --workspace "$GITHUB_WORKSPACE/workspace" --cache "$HOME/.npm" \
+            --output "$RUNNER_TEMP/permission-npm" --consumer tianshu-web --phase verify --online true
+      - name: Validate the exact final static artifact offline
+        working-directory: workspace/tianshu-web
+        run: python3 scripts/permission-ci.py validate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: permission-frontend-artifacts
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            workspace/tianshu-web/dist/
+            workspace/tianshu-web/.generated/permissions/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: permission-offline-validation
+          path: ${{ github.workspace }}/permission-temp/permission-results/
+          if-no-files-found: ignore

@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
@@ -119,6 +121,9 @@ const utcTime = (value: string | null | undefined, locale: string, t: AdminTrans
 
 export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 }: Props) {
   const { t, locale } = usePageMessages('tianshu.ai.editor')
+  const fieldsWritable = useDdcWritable('DdcAiOptimizationPolicyCommand')
+  const triggerWritable = useDdcWritable('DdcAiOptimizationTriggerCommand')
+  const mayMutate = useDdcPermission('tianshu.button.AiOptimizationPanel.ai_publish') && fieldsWritable
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [edits, setEdits] = useState<Partial<DdcAiOptimizationPolicyFields>>({})
@@ -266,41 +271,41 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
       <Card title={t('optimization.policy')}>
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Space wrap>
-            <Switch aria-label={t('optimization.enable')} checked={fields.enabled} onChange={(value) => updateField('enabled', value)} />
+            <Switch disabled={!mayMutate} aria-label={t('optimization.enable')} checked={fields.enabled} onChange={(value) => updateField('enabled', value)} />
             <span>{t('optimization.enable')}</span>
-            <Switch aria-label={t('optimization.enableJudge')} checked={fields.judgeEnabled} onChange={(value) => updateField('judgeEnabled', value)} />
+            <Switch disabled={!mayMutate} aria-label={t('optimization.enableJudge')} checked={fields.judgeEnabled} onChange={(value) => updateField('judgeEnabled', value)} />
             <span>{t('optimization.enableJudge')}</span>
-            <Switch aria-label={t('optimization.autoPublish')} checked={fields.autoPublish} onChange={(value) => updateField('autoPublish', value)} />
+            <Switch disabled={!mayMutate} aria-label={t('optimization.autoPublish')} checked={fields.autoPublish} onChange={(value) => updateField('autoPublish', value)} />
             <span>{t('optimization.autoPublish')}</span>
           </Space>
           <Space wrap>
-            <label>{t('optimization.scoreThreshold')} <InputNumber aria-label={t('optimization.scoreThreshold')} min={1} max={100} value={fields.scoreThreshold}
+            <label>{t('optimization.scoreThreshold')} <InputNumber disabled={!mayMutate} aria-label={t('optimization.scoreThreshold')} min={1} max={100} value={fields.scoreThreshold}
               onChange={(value) => updateField('scoreThreshold', Number(value ?? 1))} /></label>
-            <label>{t('optimization.minSamples')} <InputNumber aria-label={t('optimization.minSamples')} min={1} max={100000} value={fields.minSamples}
+            <label>{t('optimization.minSamples')} <InputNumber disabled={!mayMutate} aria-label={t('optimization.minSamples')} min={1} max={100000} value={fields.minSamples}
               onChange={(value) => updateField('minSamples', Number(value ?? 1))} /></label>
-            <label>{t('optimization.maxIterations')} <InputNumber aria-label={t('optimization.maxIterations')} min={1} max={50} value={fields.maxIterations}
+            <label>{t('optimization.maxIterations')} <InputNumber disabled={!mayMutate} aria-label={t('optimization.maxIterations')} min={1} max={50} value={fields.maxIterations}
               onChange={(value) => updateField('maxIterations', Number(value ?? 1))} /></label>
           </Space>
           <Space wrap>
-            <label>{t('optimization.evaluationWindow')} <Input aria-label={t('optimization.evaluationWindow')} style={{ width: 120 }} value={fields.evaluationWindow}
+            <label>{t('optimization.evaluationWindow')} <Input disabled={!mayMutate} aria-label={t('optimization.evaluationWindow')} style={{ width: 120 }} value={fields.evaluationWindow}
               onChange={(event) => updateField('evaluationWindow', event.target.value)} /></label>
-            <label>{t('optimization.cooldown')} <Input aria-label={t('optimization.cooldown')} style={{ width: 120 }} value={fields.cooldown}
+            <label>{t('optimization.cooldown')} <Input disabled={!mayMutate} aria-label={t('optimization.cooldown')} style={{ width: 120 }} value={fields.cooldown}
               onChange={(event) => updateField('cooldown', event.target.value)} /></label>
-            <label>{t('optimization.optimizerModel')} <Input aria-label={t('optimization.optimizerAlias')} style={{ width: 180 }} value={fields.optimizerModelAlias}
+            <label>{t('optimization.optimizerModel')} <Input disabled={!mayMutate} aria-label={t('optimization.optimizerAlias')} style={{ width: 180 }} value={fields.optimizerModelAlias}
               onChange={(event) => updateField('optimizerModelAlias', event.target.value)} /></label>
-            <label>{t('optimization.judgeModel')} <Input aria-label={t('optimization.judgeAlias')} style={{ width: 180 }} value={fields.judgeModelAlias}
+            <label>{t('optimization.judgeModel')} <Input disabled={!mayMutate} aria-label={t('optimization.judgeAlias')} style={{ width: 180 }} value={fields.judgeModelAlias}
               onChange={(event) => updateField('judgeModelAlias', event.target.value)} /></label>
           </Space>
-          <Input.TextArea aria-label={t('optimization.instruction')} rows={3} maxLength={4096} value={fields.optimizerInstruction}
+          <Input.TextArea readOnly={!mayMutate} aria-label={t('optimization.instruction')} rows={3} maxLength={4096} value={fields.optimizerInstruction}
             placeholder={t('optimization.instructionPlaceholder')}
             onChange={(event) => updateField('optimizerInstruction', event.target.value)} />
           {errors.map((error) => <Typography.Text key={error} type="danger">{error}</Typography.Text>)}
           <Space wrap>
-            <Button type="primary" loading={saveMutation.isPending} disabled={errors.length > 0}
-              onClick={() => saveMutation.mutate(false)}>{t('optimization.savePolicy')}</Button>
-            <Button loading={saveMutation.isPending} disabled={errors.length > 0 || runActive || !policy.persisted
+            <PermissionButton resourceKey="tianshu.button.AiOptimizationPanel.ai_publish" type="primary" loading={saveMutation.isPending} disabled={!mayMutate || errors.length > 0}
+              onClick={() => saveMutation.mutate(false)}>{t('optimization.savePolicy')}</PermissionButton>
+            <PermissionButton resourceKey="tianshu.button.AiOptimizationPanel.ai_publish" loading={saveMutation.isPending} disabled={!mayMutate || errors.length > 0 || runActive || !policy.persisted
               || policy.activeRunId !== null || policy.state === 'ARMED'}
-              onClick={() => saveMutation.mutate(true)}>{t('optimization.saveAndRearm')}</Button>
+              onClick={() => saveMutation.mutate(true)}>{t('optimization.saveAndRearm')}</PermissionButton>
           </Space>
         </Space>
       </Card>
@@ -308,10 +313,10 @@ export default function AiOptimizationPanel({ resourceId, pollIntervalMs = 2000 
       <Card title={t('optimization.manualOptimization')}>
         <Space orientation="vertical" style={{ width: '100%' }}>
           <Space wrap>
-            <Input aria-label={t('optimization.runNote')} style={{ width: 320 }} maxLength={512} value={note} placeholder={t('optimization.notePlaceholder')}
+            <Input disabled={!mayMutate} aria-label={t('optimization.runNote')} style={{ width: 320 }} maxLength={512} value={note} placeholder={t('optimization.notePlaceholder')}
               onChange={(event) => setNote(event.target.value)} />
-            <Button type="primary" loading={triggerMutation.isPending} disabled={runActive || !policy.persisted}
-              onClick={() => triggerMutation.mutate()}>{t('optimization.runNow')}</Button>
+            <PermissionButton resourceKey="tianshu.button.AiOptimizationPanel.ai_publish" type="primary" loading={triggerMutation.isPending} disabled={!mayMutate || !triggerWritable || runActive || !policy.persisted}
+              onClick={() => triggerMutation.mutate()}>{t('optimization.runNow')}</PermissionButton>
           </Space>
           {trackedRun && (
             <Descriptions

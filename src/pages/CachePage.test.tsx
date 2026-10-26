@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -52,8 +54,9 @@ const chooseScopeValue = (input: HTMLElement, value: string) => {
 describe('CachePage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn((input, init) => {
-      const url = String(input)
+      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
       if (url.includes('/cache/check/page')) {
         return Promise.resolve(jsonResponse(pageRecord))
       }

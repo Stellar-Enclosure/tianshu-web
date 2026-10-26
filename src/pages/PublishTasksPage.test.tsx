@@ -1,3 +1,5 @@
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {csrfFixture} from '../test/permissionFixture'
 import {act, fireEvent, screen, waitFor} from '@testing-library/react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -76,7 +78,7 @@ const task = {
 
 const mockEndpoints = (): void => {
   vi.mocked(fetch).mockImplementation((input, init) => {
-    const url = String(input)
+    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
     if (url.includes('/publish-tasks/page')) {
       return Promise.resolve(jsonResponse(pageRecord()))
     }
@@ -100,6 +102,7 @@ const mockEndpoints = (): void => {
 describe('PublishTasksPage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
+    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -139,7 +142,7 @@ describe('PublishTasksPage', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     let pageAttempts = 0
     vi.mocked(fetch).mockImplementation((input) => {
-      const url = String(input)
+      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
       if (url.includes('/publish-tasks/page')) {
         pageAttempts += 1
         return Promise.resolve(jsonResponse(

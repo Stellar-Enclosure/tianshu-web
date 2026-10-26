@@ -1,3 +1,6 @@
+import {ApiError, createHttpClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {gatewayAuth} from '../auth/gatewayAuth'
+import type {PermissionSnapshot, PermissionSnapshotContext} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import type {PageResultRecord, ResultEnvelope} from './types'
 
 type UnauthorizedHandler = () => void
@@ -13,6 +16,21 @@ const TENANT_HEADER = 'X-Egon-Tianshu-Tenant'
 let unauthorizedHandler: UnauthorizedHandler = () => {}
 let tenantMismatchHandler: TenantMismatchHandler = () => {}
 let requestContext: DdcRequestContext = { sessionGeneration: 0 }
+let permissionContext: {snapshot: PermissionSnapshot; binding: PermissionSnapshotContext} | undefined
+
+export const setDdcPermissionContext = (snapshot?: PermissionSnapshot, binding?: PermissionSnapshotContext): void => {
+  permissionContext = snapshot && binding ? {snapshot, binding} : undefined
+}
+export const getDdcPermissionContext = () => permissionContext
+export const requireDdcPermissionContext = () => {
+  if (!permissionContext || permissionContext.binding.requestEpoch !== gatewayAuth.context.epoch
+    || Date.parse(permissionContext.snapshot.snapshotExpiresAt) <= Date.now()) throw new Error('A current verified Tianshu permission view is required')
+  return permissionContext
+}
+const transport = createHttpClient({baseUrl: gatewayAuth.applicationBaseUrl, credentials: 'include',
+  context: gatewayAuth.context, getCsrf: signal => gatewayAuth.csrf(signal), fetch: (...args) => globalThis.fetch(...args),
+  onAuthError: status => { if (status === 401) unauthorizedHandler(); else tenantMismatchHandler() },
+})
 
 export const setDdcUnauthorizedHandler = (handler: UnauthorizedHandler): void => {
   unauthorizedHandler = handler
@@ -24,6 +42,8 @@ export const setDdcTenantMismatchHandler = (handler: TenantMismatchHandler): voi
 
 export const beginDdcSession = (): number => {
   requestContext = { sessionGeneration: requestContext.sessionGeneration + 1 }
+  permissionContext = undefined
+  gatewayAuth.context.invalidate()
   return requestContext.sessionGeneration
 }
 
@@ -87,7 +107,7 @@ export type DdcRequestOptions = {
 const requestEnvelope = async (
   path: string,
   options: DdcRequestOptions,
-): Promise<ResultEnvelope & Record<string, unknown>> => {
+): Promise<(ResultEnvelope & Record<string, unknown>) | undefined> => {
   const requestContextAtStart = getDdcRequestContext()
   const headers = new Headers(options.headers)
   let body: string | undefined
@@ -99,58 +119,23 @@ const requestEnvelope = async (
   if (requestContextAtStart.tenantId) {
     headers.set(TENANT_HEADER, encodeURIComponent(requestContextAtStart.tenantId))
   }
-  const request = () => fetch(`${import.meta.env.VITE_YUHENG_ORIGIN ?? ''}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body,
-    credentials: 'include',
-    signal: options.signal,
-  })
-
-  let response: Response
+  let payload: Partial<ResultEnvelope> & Record<string, unknown>
   try {
-    response = await request()
+    payload = await transport.request(path, {method: options.method ?? 'GET', headers, body, signal: options.signal})
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw error
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof ApiError) {
+      throw new DdcApiError(error.status, error.code, error.message, error.requestId)
     }
-    throw new DdcApiError(
-      0,
-      'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE',
-      'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE',
-    )
+    throw new DdcApiError(0, 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE', 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE')
   }
-
   if (!isCurrentDdcSession(requestContextAtStart.sessionGeneration)) {
     throw new DOMException('Response belongs to a previous Tianshu session', 'AbortError')
   }
-
-  const payload = (await response.json().catch(() => ({}))) as
-    Partial<ResultEnvelope> & Record<string, unknown>
-  if (!isCurrentDdcSession(requestContextAtStart.sessionGeneration)) {
-    throw new DOMException('Response belongs to a previous Tianshu session', 'AbortError')
-  }
-  if (response.status === 401) {
-    unauthorizedHandler()
-    throw new DdcApiError(401, 'UNAUTHORIZED', 'UNAUTHORIZED', payload.traceId)
-  }
-  if (response.status === 403 && String(payload.code) === 'TIANSHU_ADMIN_TENANT_MISMATCH') {
-    tenantMismatchHandler()
-    throw new DdcApiError(
-      403,
-      'TIANSHU_ADMIN_TENANT_MISMATCH',
-      String(payload.message ?? 'TIANSHU_ADMIN_TENANT_MISMATCH'),
-      payload.traceId,
-    )
-  }
-  if (!response.ok || payload.success === false) {
-    const errorStatus = response.ok ? 500 : response.status
-    throw new DdcApiError(
-      errorStatus,
-      String(payload.code ?? errorStatus),
-      payload.message || String(payload.code) || `HTTP_${response.status}`,
-      payload.traceId,
-    )
+  if (payload === undefined) return undefined
+  if (!payload || payload.success === false) {
+    throw new DdcApiError(500, String(payload?.code ?? payload?.status ?? 'INVALID_RESPONSE'),
+      String(payload?.message ?? 'TIANSHU_INVALID_RESPONSE'), payload?.traceId)
   }
   return payload as ResultEnvelope & Record<string, unknown>
 }
@@ -160,28 +145,13 @@ export async function ddcApi<T>(
   options: DdcRequestOptions = {},
 ): Promise<T> {
   const payload = await requestEnvelope(path, options)
-  return payload.data as T
+  return payload?.data as T
 }
 
-/** Completes the BFF session challenge before sending a language-management mutation. */
+/** The shared same-application transport obtains one CSRF proof and never replays a business mutation. */
 export async function ddcMutationApi<T>(path: string, options: DdcRequestOptions): Promise<T> {
   requireDdcExpectedTenantId()
-  const context = getDdcRequestContext()
-  const response = await fetch(`${import.meta.env.VITE_YUHENG_ORIGIN ?? ''}/bff/csrf`, {
-    credentials: 'include', signal: options.signal,
-  })
-  const challenge = await response.json().catch(() => ({})) as {headerName?: unknown; token?: unknown}
-  if (!isCurrentDdcSession(context.sessionGeneration) || getDdcRequestContext().tenantId !== context.tenantId) {
-    throw new DOMException('Response belongs to a previous Tianshu session', 'AbortError')
-  }
-  if (response.status === 401) unauthorizedHandler()
-  if (!response.ok || challenge.headerName !== 'X-CSRF-TOKEN'
-      || typeof challenge.token !== 'string' || challenge.token.length === 0 || /[\r\n]/.test(challenge.token)) {
-    throw new DdcApiError(response.ok ? 502 : response.status, 'TIANSHU_CSRF_UNAVAILABLE', 'TIANSHU_CSRF_UNAVAILABLE')
-  }
-  const headers = new Headers(options.headers)
-  headers.set('X-CSRF-TOKEN', challenge.token)
-  return ddcApi<T>(path, {...options, headers})
+  return ddcApi<T>(path, options)
 }
 
 export async function ddcPageApi<T>(
@@ -189,14 +159,14 @@ export async function ddcPageApi<T>(
   options: DdcRequestOptions = {},
 ): Promise<PageResultRecord<T>> {
   const payload = await requestEnvelope(path, options)
-  if (!Array.isArray(payload.records)
+  if (!payload || !Array.isArray(payload.records)
       || payload.page === null
       || typeof payload.page !== 'object') {
     throw new DdcApiError(
       500,
       'TIANSHU_INVALID_PAGE_RESPONSE',
       'TIANSHU_INVALID_PAGE_RESPONSE',
-      payload.traceId,
+      payload?.traceId,
     )
   }
   return payload as PageResultRecord<T>

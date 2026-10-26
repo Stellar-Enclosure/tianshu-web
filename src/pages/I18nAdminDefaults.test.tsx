@@ -1,3 +1,4 @@
+import {authorizationFixture} from '../test/permissionFixture'
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {App as AntdApp} from 'antd'
@@ -11,7 +12,7 @@ const state = vi.hoisted(() => ({
   canInitialize: true, refresh: vi.fn(), initialize: vi.fn(), page: vi.fn(),
 }))
 const adminScope = {bizCode: 'xingyuan', namespaceCode: 'default', env: 'local', appCode: 'tianshu'}
-vi.mock('../auth/AuthContext', () => ({useAuth: () => ({tenantId: 'tenant-a', sessionGeneration: 1})}))
+vi.mock('../auth/AuthContext', () => ({useAuth: () => ({tenantId: '1001', sessionGeneration: 1, authorization: authorizationFixture()})}))
 vi.mock('../api/adminI18n', () => ({initializeAdminI18n: state.initialize}))
 vi.mock('../api/i18n', async (original) => ({...await original<typeof import('../api/i18n')>(), pageI18nPages: state.page}))
 vi.mock('../components/scope/ScopeSelects', () => ({default: () => null}))

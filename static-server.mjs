@@ -5,24 +5,27 @@ import { extname, join, normalize } from 'node:path'
 
 const port = Number.parseInt(process.env.PORT ?? '8080', 10)
 const apiBase = new URL(
-  process.env.TIANSHU_ADMIN_API_BASE_URL ?? 'http://tianshu-admin:18080',
+  process.env.TIANSHU_EDGE_BASE_URL ?? process.env.TIANSHU_ADMIN_API_BASE_URL ?? 'http://edge:18180',
 )
+const appAlias = process.env.TIANSHU_EDGE_APP_ALIAS ?? 'edge-tianshu'
+if (!/^[a-z][a-z0-9-]{0,63}$/.test(appAlias)) throw new Error('Invalid Tianshu Edge application alias')
+const applicationPath = `/apps/${appAlias}/`
 const developmentPlaintext =
   process.env.TIANSHU_ADMIN_API_DEVELOPMENT_PLAINTEXT === 'true'
 const tlsFile = (name) => {
   const path = process.env[name]
   if (!path) {
-    throw new Error(`${name} is required for Tianshu Admin mTLS`)
+    throw new Error(`${name} is required for Tianshu Edge mTLS`)
   }
   return readFileSync(path)
 }
 if (apiBase.protocol === 'http:' && !developmentPlaintext) {
   throw new Error(
-    'Tianshu Admin plaintext requires explicit development configuration',
+    'Tianshu Edge plaintext requires explicit development configuration',
   )
 }
 if (!['http:', 'https:'].includes(apiBase.protocol)) {
-  throw new Error('Tianshu Admin API must use HTTP or HTTPS')
+  throw new Error('Tianshu Edge origin must use HTTP or HTTPS')
 }
 const apiTls = apiBase.protocol === 'https:'
   ? {
@@ -34,6 +37,11 @@ const apiTls = apiBase.protocol === 'https:'
     }
   : {}
 const root = '/app/dist'
+const buildEvidence = JSON.parse(readFileSync(join(root, 'permission-build.json'), 'utf8'))
+if (buildEvidence.schemaVersion !== 1 || buildEvidence.producerId !== 'tianshu-web'
+    || buildEvidence.application?.businessCode !== 'xingyuan' || buildEvidence.application?.applicationCode !== 'tianshu') {
+  throw new Error('A verified tianshu-web permission build is required')
+}
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -76,7 +84,7 @@ const serve = (incoming, outgoing) => {
     outgoing.end('ok')
     return
   }
-  if (incoming.url?.startsWith('/api/')) {
+  if (incoming.url?.startsWith(applicationPath)) {
     proxy(incoming, outgoing)
     return
   }

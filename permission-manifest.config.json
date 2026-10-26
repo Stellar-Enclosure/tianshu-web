@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "businessCode": "xingyuan",
+    "applicationCode": "tianshu"
+  },
+  "producerId": "tianshu-web",
+  "ownedKeyPrefixes": [
+    "tianshu.app.",
+    "tianshu.menu.",
+    "tianshu.page.",
+    "tianshu.button."
+  ],
+  "expectedModules": [
+    "console"
+  ],
+  "modules": {
+    "console": {
+      "entryPoints": [
+        "src/permissions/permissions.ts",
+        "src/permissions/resources.ts",
+        "src/permissions/messages.ts",
+        "src/permissions/fieldReferences.ts"
+      ]
+    }
+  },
+  "artifact": {
+    "repository": "tianshu-web",
+    "commit": "bf5ca46d6e60a9bb69cd6dbe4fe4c105087175aa",
+    "buildId": "local-source",
+    "version": "0.0.1"
+  },
+  "tsconfig": "tsconfig.app.json",
+  "toolchainLock": "permission-toolchain.lock.json"
+}

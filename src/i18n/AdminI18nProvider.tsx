@@ -1,8 +1,10 @@
-import {createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode} from 'react'
+import {createInstance} from 'i18next'
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode} from 'react'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, App as AntdApp, Button, ConfigProvider, Space, Spin} from 'antd'
 import {ReloadOutlined} from '@ant-design/icons'
-import {createPageI18nLoader, type PageI18nResult} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {createPageI18nLoader, type PageI18nResult, type PageI18nLoader} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useAuth} from '../auth/AuthContext'
 import {getDdcRequestContext} from '../api/client'
 import {getAdminI18nBootstrap, getAdminI18nBundle, getPublicI18nBundle, type AdminI18nBootstrap} from '../api/adminI18n'
@@ -21,6 +23,8 @@ const initialLocale = (): string => {
   } catch { return 'zh-CN' }
 }
 
+type AdminMessages = Pick<PageI18nResult, 't' | 'messages' | 'source'>
+
 type MessagesContext = {
   identity: string
   authorized: boolean
@@ -29,7 +33,7 @@ type MessagesContext = {
   changing: boolean
   changeLocale: (locale: string) => Promise<void>
   refresh: () => Promise<void>
-  load: (pageCode: string, locale: string, refresh?: boolean) => Promise<PageI18nResult>
+  load: (pageCode: string, locale: string, refresh?: boolean) => Promise<AdminMessages>
   register: (pageCode: string) => () => void
 }
 
@@ -37,8 +41,8 @@ const Context = createContext<MessagesContext | null>(null)
 const bundleKey = (identity: string, pageCode: string, locale: string) => ['tianshu-ui', identity, pageCode, locale] as const
 
 export function AdminI18nProvider({children}: {children: ReactNode}) {
-  const {tenantId, sessionGeneration, authorized} = useAuth()
-  const identity = JSON.stringify([tenantId, sessionGeneration, authorized])
+  const {tenantId, sessionGeneration, authorized, authorization} = useAuth()
+  const identity = JSON.stringify([tenantId, sessionGeneration, authorized, authorization?.binding])
   return <SessionMessages key={identity} identity={identity} authorized={authorized}>
     {children}
   </SessionMessages>
@@ -46,23 +50,18 @@ export function AdminI18nProvider({children}: {children: ReactNode}) {
 
 function SessionMessages({identity, authorized, children}: {identity: string; authorized: boolean; children: ReactNode}) {
   const queryClient = useQueryClient()
+  const {authorization} = useAuth()
   const [locale, setLocale] = useState(initialLocale)
   const [changing, setChanging] = useState(false)
   const [failure, setFailure] = useState(false)
   const [registrations] = useState(() => new Map<string, number>())
   const [session] = useState(getDdcRequestContext)
-  const [loader] = useState(() => {
-    const instance = createPageI18nLoader({fetchBundle: (query, {signal}) => authorized
-      ? getAdminI18nBundle(query.pageCode, query.locale, signal)
-      : getPublicI18nBundle(query.locale, signal)})
-    instance.setIdentity(identity)
-    return instance
-  })
+  const loader = useRef<PageI18nLoader | null>(null)
   const current = useCallback(() => {
     const context = getDdcRequestContext()
     return context.sessionGeneration === session.sessionGeneration && context.tenantId === session.tenantId
   }, [session])
-  useEffect(() => () => loader.clear(), [loader])
+  useEffect(() => () => { loader.current?.dispose(); loader.current = null }, [])
 
   const bootstrapQuery = useQuery({
     queryKey: ['tianshu-ui', identity, 'bootstrap'],
@@ -71,10 +70,28 @@ function SessionMessages({identity, authorized, children}: {identity: string; au
     staleTime: 60_000,
   })
   const {data: bootstrap, refetch: refetchBootstrap, error: bootstrapError} = bootstrapQuery
-  const load = useCallback((pageCode: string, language: string, refresh = false) => loader.load({
-    ...(bootstrap?.scope ?? {bizCode: 'public', namespaceCode: 'public', env: 'public', appCode: 'tianshu'}),
-    pageCode: authorized ? pageCode : 'tianshu.auth', locale: language,
-  }, {refresh}), [authorized, bootstrap?.scope, loader])
+  const load = useCallback(async (pageCode: string, language: string, refresh = false): Promise<AdminMessages> => {
+    if (authorized) {
+      if (!authorization) throw new Error('AUTH_PERMISSION_VIEW_REQUIRED')
+      if (!loader.current) {
+        loader.current = createPageI18nLoader({requestContext: gatewayAuth.context,
+          fetchBundle: (query, {signal}) => getAdminI18nBundle(query.pageCode, query.locale, signal)})
+        loader.current.setIdentity({...authorization.binding, snapshotExpiresAt: authorization.snapshot.snapshotExpiresAt})
+      }
+      const {catalogScope, catalogVersion} = authorization.binding
+      return loader.current.load({bizCode: catalogScope.businessCode, namespaceCode: catalogScope.namespaceCode,
+        env: catalogScope.environment, appCode: catalogScope.applicationCode, catalogScopeId: catalogScope.catalogScopeId,
+        catalogActivationVersion: catalogVersion, pageCode, locale: language}, {refresh})
+    }
+    const bundle = await getPublicI18nBundle(language)
+    if (!current() || bundle.pageCode !== 'tianshu.auth' || bundle.locale !== language
+      || !bundle.messages || Object.values(bundle.messages).some(value => typeof value !== 'string')) throw new Error('TIANSHU_UI_I18N_UNAVAILABLE')
+    const publicI18n = createInstance()
+    await publicI18n.init({lng: language, fallbackLng: false, keySeparator: false, nsSeparator: false,
+      resources: {[language]: {translation: bundle.messages}}, interpolation: {escapeValue: false, skipOnVariables: true}})
+    return {messages: bundle.messages, source: 'remote',
+      t: (key, values) => current() ? publicI18n.t(key, {replace: values, nest: false}) : key}
+  }, [authorized, authorization, loader, current])
   const register = useCallback((pageCode: string) => {
     registrations.set(pageCode, (registrations.get(pageCode) ?? 0) + 1)
     return () => {

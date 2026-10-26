@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -38,6 +40,8 @@ type EnvFormValues = {
 
 export default function EnvPage() {
   const { t, locale } = usePageMessages('tianshu.envs')
+  const fieldsWritable = useDdcWritable('DdcEnvBO')
+  const mayMutate = useDdcPermission('tianshu.button.EnvPage.write') && fieldsWritable
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -175,7 +179,7 @@ export default function EnvPage() {
       render: (_: unknown, row: DdcEnv) => (
         <Switch
           checked={row.enabled}
-          disabled={toggleMutation.isPending
+          disabled={!mayMutate || toggleMutation.isPending
             && toggleMutation.variables?.item.id === row.id}
           onChange={(enabled) => toggleMutation.mutate({ item: row, enabled })}
         />
@@ -193,12 +197,12 @@ export default function EnvPage() {
       fixed: 'right' as const,
       render: (_: unknown, row: DdcEnv) => (
         <Space wrap={false}>
-          <Button size="small" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
-          <Popconfirm
+          <PermissionButton resourceKey="tianshu.button.EnvPage.write" size="small" onClick={() => openEdit(row)}>{t('common.edit')}</PermissionButton>
+          <Popconfirm disabled={!mayMutate}
             title={t('confirm.delete', { code: row.envCode })}
             onConfirm={() => removeMutation.mutateAsync(row)}
           >
-            <Button size="small" danger>{t('common.delete')}</Button>
+            <PermissionButton resourceKey="tianshu.button.EnvPage.write" size="small" danger>{t('common.delete')}</PermissionButton>
           </Popconfirm>
         </Space>
       ),
@@ -210,7 +214,7 @@ export default function EnvPage() {
       <AdminPageHeader
         title={t('title')}
         description={t('description')}
-        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
+        extra={<PermissionButton resourceKey="tianshu.button.EnvPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -255,12 +259,13 @@ export default function EnvPage() {
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}
         onCancel={() => setOpen(false)}
-        onOk={() => { void save() }}
+        onOk={() => { if (mayMutate) void save() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form<EnvFormValues>
+        <Form<EnvFormValues> disabled={!mayMutate}
           form={form}
           layout="vertical"
           initialValues={{ enabled: true, sortOrder: 0 }}

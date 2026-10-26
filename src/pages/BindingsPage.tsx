@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {PermissionButton, useDdcPermission} from '../permissions/access'
 import {
   keepPreviousData,
   useMutation,
@@ -46,6 +48,8 @@ const emptyFilter: BindingFilter = {
 
 export default function BindingsPage() {
   const { t } = usePageMessages('tianshu.bindings')
+  const fieldsWritable = useDdcWritable('DdcNamespaceEnvAppBindingRequest')
+  const mayMutate = useDdcPermission('tianshu.button.BindingsPage.write') && fieldsWritable
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -163,7 +167,7 @@ export default function BindingsPage() {
       <AdminPageHeader
         title={t('title')}
         description={t('description')}
-        extra={<Button type="primary" onClick={openCreate}>{t('actions.create')}</Button>}
+        extra={<PermissionButton resourceKey="tianshu.button.BindingsPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -221,14 +225,14 @@ export default function BindingsPage() {
                 fixed: 'right' as const,
                 render: (_value: unknown, item: DdcNamespaceEnvAppBinding) => (
                   <Space>
-                    <Button size="small" onClick={() => openEdit(item)}>{t('common.edit')}</Button>
-                    <Popconfirm
+                    <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" onClick={() => openEdit(item)}>{t('common.edit')}</PermissionButton>
+                    <Popconfirm disabled={!mayMutate}
                       title={t('confirm.delete', { namespaceCode: item.namespaceCode, env: item.env, appCode: item.appCode })}
                       onConfirm={() => removeMutation.mutate(item)}
                     >
-                      <Button size="small" danger loading={removeMutation.isPending && removeMutation.variables?.id === item.id}>
+                      <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" danger loading={removeMutation.isPending && removeMutation.variables?.id === item.id}>
                         {t('common.delete')}
-                      </Button>
+                      </PermissionButton>
                     </Popconfirm>
                   </Space>
                 ),
@@ -250,12 +254,13 @@ export default function BindingsPage() {
         open={open}
         title={editing ? t('dialog.edit') : t('dialog.create')}
         onCancel={() => { setOpen(false); setEditing(null) }}
-        onOk={() => { void save() }}
+        onOk={() => { if (mayMutate) void save() }}
+        okButtonProps={{disabled: !mayMutate}}
         okText={t('common.save')}
         confirmLoading={saveMutation.isPending}
         destroyOnHidden
       >
-        <Form<DdcNamespaceEnvAppBindingRequest>
+        <Form<DdcNamespaceEnvAppBindingRequest> disabled={!mayMutate}
           form={form}
           layout="vertical"
           initialValues={{ enabled: true }}

@@ -1,3 +1,5 @@
+import {useDdcWritable} from '../permissions/FieldCatalog'
+import {useDdcPermission} from '../permissions/access'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -99,6 +101,8 @@ export default function AiPromotionDialog({
   onPendingChange = () => {},
 }: Props) {
   const { t } = usePageMessages('tianshu.ai.editor')
+  const fieldsWritable = useDdcWritable('DdcAiPromotionCommand')
+  const mayMutate = useDdcPermission('tianshu.button.AiPromotionDialog.ai_write') && fieldsWritable
   const { message } = App.useApp()
   const [targetScope, setTargetScope] = useState<DdcAiScope>({ ...emptyScope })
   const [targetResourceKey, setTargetResourceKey] = useState(sourceResource.resourceKey)
@@ -276,11 +280,11 @@ export default function AiPromotionDialog({
       onCancel={() => {
         if (!pendingPromotion) onCancel()
       }}
-      onOk={pendingPromotion ? () => promotionMutation.mutate(pendingPromotion) : submit}
+      onOk={() => { if (mayMutate) { if (pendingPromotion) promotionMutation.mutate(pendingPromotion); else submit() } }}
       okText={pendingPromotion ? t('versions.retryRequest') : t('promotion.copyAndPublish')}
       cancelText={t('common.cancel')}
       confirmLoading={promotionMutation.isPending}
-      okButtonProps={{ disabled: pendingPromotion === null && !canSubmit }}
+      okButtonProps={{disabled: !mayMutate || pendingPromotion === null && !canSubmit }}
       closable={pendingPromotion === null}
       mask={{ closable: pendingPromotion === null }}
       keyboard={pendingPromotion === null}
@@ -302,7 +306,7 @@ export default function AiPromotionDialog({
             {t('versions.verifyRequest')}
           </Button>
         )}
-        <Form layout="vertical">
+        <Form disabled={!mayMutate} layout="vertical">
           <Form.Item label={t('promotion.targetScope')} required>
             <ScopeSelects
               value={targetScope}

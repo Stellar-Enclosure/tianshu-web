@@ -1,3 +1,5 @@
+import {authorizationFixture} from '../test/permissionFixture'
+import type {TianshuAuthorization} from '../auth/AuthContext'
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {StrictMode, useEffect, useState} from 'react'
@@ -10,7 +12,7 @@ import {
   AdminI18nProvider, PageLanguageBoundary, useAdminI18n, usePageMessages, type AdminTranslate,
 } from './AdminI18nProvider'
 
-const auth = vi.hoisted(() => ({tenantId: undefined as string | undefined, sessionGeneration: 0, authorized: false}))
+const auth = vi.hoisted(() => ({tenantId: undefined as string | undefined, sessionGeneration: 0, authorized: false, authorization: undefined as TianshuAuthorization | undefined}))
 const api = vi.hoisted(() => ({
   getAdminI18nBootstrap: vi.fn(), getAdminI18nBundle: vi.fn(), getPublicI18nBundle: vi.fn(),
 }))
@@ -19,13 +21,14 @@ vi.unmock('../i18n/AdminI18nProvider')
 vi.mock('../auth/AuthContext', () => ({useAuth: () => auth}))
 vi.mock('../api/adminI18n', () => api)
 
-const adminScope = {bizCode: 'platform', namespaceCode: 'admin', env: 'prod', appCode: 'tianshu'}
+const adminScope = {bizCode: 'xingyuan', namespaceCode: 'default', env: 'local', appCode: 'tianshu'}
 const bootstrap = (): AdminI18nBootstrap => ({
   scope: {...adminScope}, defaultLocale: 'zh-CN', locales: ['zh-CN', 'en-US'],
   pages: [{pageCode: 'tianshu.bizs', name: 'Business domains'}], canInitialize: false,
 })
 
-const bundle = (pageCode: string, locale: string, tenant = 'tenant-a', version = '1'): DdcI18nBundle => ({
+const bundle = (pageCode: string, locale: string, tenant = '1001', version = '1'): DdcI18nBundle => ({
+  catalogScope: authorizationFixture(tenant).binding.catalogScope, catalogActivationVersion: '7', sourceVersions: {backend: 'a'.repeat(64)}, publishedOverrideRevisions: {page: version}, diagnostics: [],
   pageCode, locale, defaultLocale: 'zh-CN', version,
   messages: {
     title: pageCode === 'tianshu.auth'
@@ -56,6 +59,7 @@ function establishSession(tenantId?: string) {
   setDdcExpectedTenantId(tenantId)
   auth.tenantId = tenantId
   auth.authorized = tenantId !== undefined
+  auth.authorization = tenantId ? authorizationFixture(tenantId) : undefined
 }
 
 function Probe({capture}: {capture?: (translate: AdminTranslate) => void}) {
@@ -103,7 +107,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem('tianshu.admin.locale', 'zh-CN')
-    establishSession('tenant-a')
+    establishSession('1001')
     api.getAdminI18nBootstrap.mockReset().mockImplementation(async () => bootstrap())
     api.getAdminI18nBundle.mockReset().mockImplementation(async (pageCode: string, locale: string) =>
       bundle(pageCode, locale, getDdcRequestContext().tenantId))
@@ -132,7 +136,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
 
     expect(await screen.findByTestId('page-title')).toHaveTextContent('登录')
     expect(screen.getByTestId('common-save')).toHaveTextContent('保存')
-    expect(api.getPublicI18nBundle).toHaveBeenCalledWith('zh-CN', expect.any(AbortSignal))
+    expect(api.getPublicI18nBundle).toHaveBeenCalledWith('zh-CN')
     expect(api.getAdminI18nBootstrap).not.toHaveBeenCalled()
     expect(api.getAdminI18nBundle).not.toHaveBeenCalled()
   })
@@ -146,7 +150,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
     expect(screen.queryByTestId('page-title')).not.toBeInTheDocument()
 
     await act(async () => { configuration.resolve(bootstrap()) })
-    expect(await screen.findByTestId('page-title')).toHaveTextContent('tenant-a 企业文案 1')
+    expect(await screen.findByTestId('page-title')).toHaveTextContent('1001 企业文案 1')
     expect(screen.getByTestId('common-save')).toHaveTextContent('保存')
     expect(screen.getByTestId('welcome')).toHaveTextContent('你好 Alice')
     expect(api.getAdminI18nBundle).toHaveBeenCalledWith('common', 'zh-CN', expect.any(AbortSignal))
@@ -157,7 +161,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
   it('finishes its initial page and common loads under StrictMode', async () => {
     renderProvider({strict: true})
 
-    expect(await screen.findByTestId('page-title')).toHaveTextContent('tenant-a 企业文案 1')
+    expect(await screen.findByTestId('page-title')).toHaveTextContent('1001 企业文案 1')
     expect(screen.getByTestId('common-save')).toHaveTextContent('保存')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -176,14 +180,14 @@ describe('AdminI18nProvider with the real page SDK', () => {
 
     await act(async () => { commonEnglish.resolve(bundle('common', 'en-US')) })
     expect(screen.getByTestId('locale')).toHaveTextContent('zh-CN')
-    expect(screen.getByTestId('page-title')).toHaveTextContent('tenant-a 企业文案 1')
+    expect(screen.getByTestId('page-title')).toHaveTextContent('1001 企业文案 1')
     expect(screen.getByTestId('common-save')).toHaveTextContent('保存')
     expect(screen.getByTestId('changing')).toHaveTextContent('true')
     expect(screen.getByLabelText('Draft')).toHaveValue('Unsaved tenant configuration')
 
     await act(async () => { pageEnglish.resolve(bundle('tianshu.bizs', 'en-US')) })
     await waitFor(() => expect(screen.getByTestId('locale')).toHaveTextContent('en-US'))
-    expect(screen.getByTestId('page-title')).toHaveTextContent('tenant-a Enterprise text 1')
+    expect(screen.getByTestId('page-title')).toHaveTextContent('1001 Enterprise text 1')
     expect(screen.getByTestId('common-save')).toHaveTextContent('Save')
     expect(screen.getByLabelText('Draft')).toHaveValue('Unsaved tenant configuration')
     expect(localStorage.getItem('tianshu.admin.locale')).toBe('en-US')
@@ -202,7 +206,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('语言包刷新失败')
     expect(screen.getByTestId('locale')).toHaveTextContent('zh-CN')
-    expect(screen.getByTestId('page-title')).toHaveTextContent('tenant-a 企业文案 1')
+    expect(screen.getByTestId('page-title')).toHaveTextContent('1001 企业文案 1')
     expect(screen.getByLabelText('Draft')).toHaveValue('Keep draft')
     expect(localStorage.getItem('tianshu.admin.locale')).toBe('zh-CN')
 
@@ -215,7 +219,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
 
   it('refreshes the published version and removes deleted messages without resetting the draft', async () => {
     let version = '1'
-    api.getAdminI18nBundle.mockImplementation(async (pageCode: string, locale: string) => bundle(pageCode, locale, 'tenant-a', version))
+    api.getAdminI18nBundle.mockImplementation(async (pageCode: string, locale: string) => bundle(pageCode, locale, '1001', version))
     renderProvider()
     await screen.findByTestId('page-title')
     fireEvent.change(screen.getByLabelText('Draft'), {target: {value: 'Keep draft'}})
@@ -223,7 +227,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
 
     version = '2'
     fireEvent.click(screen.getByRole('button', {name: 'Refresh bundles'}))
-    await waitFor(() => expect(screen.getByTestId('page-title')).toHaveTextContent('tenant-a 企业文案 2'))
+    await waitFor(() => expect(screen.getByTestId('page-title')).toHaveTextContent('1001 企业文案 2'))
     expect(screen.getByTestId('removed-key')).toHaveTextContent(/^obsolete$/)
     expect(screen.getByLabelText('Draft')).toHaveValue('Keep draft')
   })
@@ -241,7 +245,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Company cancel'}))
   })
 
-  it.each(['tenant-b', 'tenant-a'])('discards old translators and late language changes after a new session for %s', async (nextTenant) => {
+  it.each(['1002', '1001'])('discards old translators and late language changes after a new session for %s', async (nextTenant) => {
     const oldEnglish = deferred<DdcI18nBundle>()
     const capture = vi.fn<(translate: AdminTranslate) => void>()
     const initialGeneration = auth.sessionGeneration
@@ -263,7 +267,7 @@ describe('AdminI18nProvider with the real page SDK', () => {
     expect(screen.getByLabelText('Draft')).toHaveValue('')
     expect(previousTranslate('title')).toBe('title')
 
-    await act(async () => { oldEnglish.resolve(bundle('tianshu.bizs', 'en-US', 'tenant-a')) })
+    await act(async () => { oldEnglish.resolve(bundle('tianshu.bizs', 'en-US', '1001')) })
     expect(screen.getByTestId('page-title')).toHaveTextContent(`${nextTenant} 企业文案 2`)
     expect(screen.getByTestId('locale')).toHaveTextContent('zh-CN')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -274,18 +278,18 @@ describe('AdminI18nProvider with the real page SDK', () => {
     const oldPage = deferred<DdcI18nBundle>()
     api.getAdminI18nBundle.mockImplementation((pageCode: string, locale: string) => {
       const tenant = getDdcRequestContext().tenantId
-      return tenant === 'tenant-a' && pageCode === 'tianshu.bizs'
+      return tenant === '1001' && pageCode === 'tianshu.bizs'
         ? oldPage.promise : Promise.resolve(bundle(pageCode, locale, tenant))
     })
     const view = renderProvider()
     await waitFor(() => expect(api.getAdminI18nBundle).toHaveBeenCalledWith('tianshu.bizs', 'zh-CN', expect.any(AbortSignal)))
     expect(screen.queryByTestId('page-title')).not.toBeInTheDocument()
 
-    establishSession('tenant-b')
+    establishSession('1002')
     view.rerenderSession()
-    expect(await screen.findByTestId('page-title')).toHaveTextContent('tenant-b 企业文案 1')
-    await act(async () => { oldPage.resolve(bundle('tianshu.bizs', 'zh-CN', 'tenant-a')) })
-    expect(screen.getByTestId('page-title')).toHaveTextContent('tenant-b 企业文案 1')
+    expect(await screen.findByTestId('page-title')).toHaveTextContent('1002 企业文案 1')
+    await act(async () => { oldPage.resolve(bundle('tianshu.bizs', 'zh-CN', '1001')) })
+    expect(screen.getByTestId('page-title')).toHaveTextContent('1002 企业文案 1')
   })
 
   it('keeps the language scope on bootstrap configuration when business filters change', async () => {
