@@ -6,6 +6,12 @@ import {setDdcUnauthorizedHandler} from '../api/client'
 import {renderWithQueryClient} from '../test/renderWithQueryClient'
 import NamespacesPage from './NamespacesPage'
 
+vi.mock('../hooks/useNamespaceListView', () => ({useNamespaceListView: () => ({
+  view: {definitionDigest: 'fixture', catalogVersion: '1', columns: [], templates: [], selectedTemplateId: null,
+    visibleColumns: ['bizCode', 'namespaceCode', 'namespace', 'description', 'enabled', 'updatedAt']},
+  loading: false, maySystem: false, mayPersonal: false, mayExport: false, selectionWritable: true,
+})}))
+
 const record = (data: unknown) => ({
   success: true,
   code: 0,

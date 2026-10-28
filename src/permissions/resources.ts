@@ -1,5 +1,5 @@
 import {defineResources, defineMessages} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import {READ, WRITE, PUBLISH, CACHE, AI_READ, AI_WRITE, AI_PUBLISH} from './permissions'
+import {READ, WRITE, PUBLISH, CACHE, AI_READ, AI_WRITE, AI_PUBLISH, NAMESPACE_TEMPLATE_SYSTEM, NAMESPACE_TEMPLATE_PERSONAL, NAMESPACE_EXPORT} from './permissions'
 
 export const resources = defineResources([
   {"key": "tianshu.app.console", "type": "APP", "target": {"applicationCode": "tianshu"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.app.console"}},
@@ -15,6 +15,20 @@ export const resources = defineResources([
   {"key": "tianshu.page.apps", "type": "PAGE", "target": {"route": "/apps"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.apps"}},
   {"key": "tianshu.menu.apps", "type": "MENU", "target": {"route": "/apps", "parentKey": "tianshu.app.console"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.menu.apps"}},
   {"key": "tianshu.page.namespaces", "type": "PAGE", "target": {"route": "/namespaces"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.namespaces"}},
+  {"key": "tianshu.component.namespaces.main", "type": "COMPONENT", "target": {
+    "kind": "LIST", "pageResourceKey": "tianshu.page.namespaces", "listKey": "main",
+    "pageApiKey": "tianshu.api.namespace.page", "systemTemplateApiKey": "tianshu.api.listTemplate.saveSystem",
+    "personalTemplateApiKey": "tianshu.api.listTemplate.savePersonal",
+    "scopePolicyDigest": "d8c4afc7a2fcbf82475f4c18f36904511a4485843e93de7dd94ba71ab8f3b416",
+    "definitionDigest": "8da5e9b35f8eb402f60741cfa236359d85bed300914f3c6f8477789857fdd9c3",
+    "columns": [
+      "000|bizCode|tianshu.field.DdcNamespaceResult.bizCode|tianshu.namespaces|fields.bizCode|1|1",
+      "001|namespaceCode|tianshu.field.DdcNamespaceResult.namespaceCode|tianshu.namespaces|fields.namespaceCode|1|1",
+      "002|namespace|tianshu.field.DdcNamespaceResult.namespace|common|common.name|1|1",
+      "003|description|tianshu.field.DdcNamespaceResult.description|common|common.description|1|1",
+      "004|enabled|tianshu.field.DdcNamespaceResult.enabled|common|common.enabled|1|1",
+      "005|updatedAt|tianshu.field.DdcNamespaceResult.updatedAt|common|common.updatedAt|1|1"
+    ]}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.component.namespaces.main"}},
   {"key": "tianshu.menu.namespaces", "type": "MENU", "target": {"route": "/namespaces", "parentKey": "tianshu.app.console"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.menu.namespaces"}},
   {"key": "tianshu.page.bindings", "type": "PAGE", "target": {"route": "/bindings"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.bindings"}},
   {"key": "tianshu.menu.bindings", "type": "MENU", "target": {"route": "/bindings", "parentKey": "tianshu.app.console"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.menu.bindings"}},
@@ -37,6 +51,9 @@ export const resources = defineResources([
   {"key": "tianshu.button.BizsPage.write", "type": "BUTTON", "target": {"component": "src/pages/BizsPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.BizsPage.write"}},
   {"key": "tianshu.button.EnvPage.write", "type": "BUTTON", "target": {"component": "src/pages/EnvPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.EnvPage.write"}},
   {"key": "tianshu.button.NamespacesPage.write", "type": "BUTTON", "target": {"component": "src/pages/NamespacesPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.NamespacesPage.write"}},
+  {"key": "tianshu.button.NamespacesPage.templateSystem", "type": "BUTTON", "target": {"component": "src/pages/NamespacesPage.tsx", "action": "templateSystem"}, "requirement": {"mode": "ALL", "codes": [NAMESPACE_TEMPLATE_SYSTEM]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.NamespacesPage.templateSystem"}},
+  {"key": "tianshu.button.NamespacesPage.templatePersonal", "type": "BUTTON", "target": {"component": "src/pages/NamespacesPage.tsx", "action": "templatePersonal"}, "requirement": {"mode": "ALL", "codes": [NAMESPACE_TEMPLATE_PERSONAL]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.NamespacesPage.templatePersonal"}},
+  {"key": "tianshu.button.NamespacesPage.export", "type": "BUTTON", "target": {"component": "src/pages/NamespacesPage.tsx", "action": "export"}, "requirement": {"mode": "ALL", "codes": [NAMESPACE_EXPORT]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.NamespacesPage.export"}},
   {"key": "tianshu.button.BindingsPage.write", "type": "BUTTON", "target": {"component": "src/pages/BindingsPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.BindingsPage.write"}},
   {"key": "tianshu.button.ConfigsPage.write", "type": "BUTTON", "target": {"component": "src/pages/ConfigsPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.ConfigsPage.write"}},
   {"key": "tianshu.button.ConfigsPage.publish", "type": "BUTTON", "target": {"component": "src/pages/ConfigsPage.tsx", "action": "publish"}, "requirement": {"mode": "ALL", "codes": [PUBLISH]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.ConfigsPage.publish"}},
@@ -67,6 +84,7 @@ export const resourceMessages = defineMessages([
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.apps", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "应用", "en-US": "Applications"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.menu.apps", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "应用", "en-US": "Applications"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.namespaces", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "命名空间", "en-US": "Namespaces"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.component.namespaces.main", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "命名空间列表", "en-US": "Namespace list"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.menu.namespaces", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "命名空间", "en-US": "Namespaces"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.bindings", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "作用域绑定", "en-US": "Scope bindings"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.menu.bindings", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "作用域绑定", "en-US": "Scope bindings"}},
@@ -89,6 +107,9 @@ export const resourceMessages = defineMessages([
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.BizsPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "编辑业务域", "en-US": "Edit business domains"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.EnvPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "编辑环境", "en-US": "Edit environments"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.NamespacesPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "编辑命名空间", "en-US": "Edit namespaces"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.NamespacesPage.templateSystem", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "管理系统模板", "en-US": "Manage system templates"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.NamespacesPage.templatePersonal", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "管理个人模板", "en-US": "Manage personal templates"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.NamespacesPage.export", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "导出命名空间", "en-US": "Export namespaces"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.BindingsPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "编辑作用域绑定", "en-US": "Edit scope bindings"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.ConfigsPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "编辑配置", "en-US": "Edit configuration"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.ConfigsPage.publish", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "发布与回滚配置", "en-US": "Publish and roll back configuration"}},

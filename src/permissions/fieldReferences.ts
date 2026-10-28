@@ -1,6 +1,32 @@
 import {defineResourceReferences} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 
 export const fieldReferences = defineResourceReferences([
+  {"key": "tianshu.field.DdcListTemplateCommand.id", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.expectedVersion", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.name", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.columnKeys", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.defaultTemplate", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.catalogVersion", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListTemplateCommand.definitionDigest", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListSelectionCommand.templateId", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListSelectionCommand.catalogVersion", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcListSelectionCommand.definitionDigest", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.bizCode", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.keyword", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.range", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.pageNo", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.pageSize", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.locale", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.catalogVersion", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.definitionDigest", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.templateId", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceExportCommand.templateVersion", "usage": "FORM_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.bizCode", "usage": "TABLE_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.namespaceCode", "usage": "TABLE_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.namespace", "usage": "TABLE_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.description", "usage": "TABLE_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.enabled", "usage": "TABLE_FIELD"},
+  {"key": "tianshu.field.DdcNamespaceResult.updatedAt", "usage": "TABLE_FIELD"},
   {
     "key": "tianshu.field.DdcAiCreateCommand.description",
     "usage": "FORM_FIELD"
@@ -384,6 +410,23 @@ export const fieldReferences = defineResourceReferences([
 ] as const)
 
 export const inputFields = {
+  "DdcListTemplateCommand": [
+    "tianshu.field.DdcListTemplateCommand.id", "tianshu.field.DdcListTemplateCommand.expectedVersion",
+    "tianshu.field.DdcListTemplateCommand.name", "tianshu.field.DdcListTemplateCommand.columnKeys",
+    "tianshu.field.DdcListTemplateCommand.defaultTemplate", "tianshu.field.DdcListTemplateCommand.catalogVersion",
+    "tianshu.field.DdcListTemplateCommand.definitionDigest"
+  ],
+  "DdcListSelectionCommand": [
+    "tianshu.field.DdcListSelectionCommand.templateId", "tianshu.field.DdcListSelectionCommand.catalogVersion",
+    "tianshu.field.DdcListSelectionCommand.definitionDigest"
+  ],
+  "DdcNamespaceExportCommand": [
+    "tianshu.field.DdcNamespaceExportCommand.bizCode", "tianshu.field.DdcNamespaceExportCommand.keyword",
+    "tianshu.field.DdcNamespaceExportCommand.range", "tianshu.field.DdcNamespaceExportCommand.pageNo",
+    "tianshu.field.DdcNamespaceExportCommand.pageSize", "tianshu.field.DdcNamespaceExportCommand.locale",
+    "tianshu.field.DdcNamespaceExportCommand.catalogVersion", "tianshu.field.DdcNamespaceExportCommand.definitionDigest",
+    "tianshu.field.DdcNamespaceExportCommand.templateId", "tianshu.field.DdcNamespaceExportCommand.templateVersion"
+  ],
   "DdcBizBO": [
     "tianshu.field.DdcBizBO.bizCode",
     "tianshu.field.DdcBizBO.bizName",

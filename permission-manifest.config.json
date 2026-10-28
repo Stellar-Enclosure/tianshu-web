@@ -9,6 +9,7 @@
     "tianshu.app.",
     "tianshu.menu.",
     "tianshu.page.",
+    "tianshu.component.",
     "tianshu.button."
   ],
   "expectedModules": [

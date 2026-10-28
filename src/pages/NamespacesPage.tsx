@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-query'
 import {
   App,
+  Alert,
   Button,
   Card,
   Drawer,
@@ -38,6 +39,8 @@ import BizSelect from '../components/scope/BizSelect'
 import { scopeOptionQueryKey } from '../components/scope/useScopeOptions'
 import { usePageState } from '../hooks/usePageState'
 import { buildQuery, formatTime } from '../lib/query'
+import { useNamespaceListView } from '../hooks/useNamespaceListView'
+import { NamespaceListControls } from '../components/list/NamespaceListControls'
 
 type NamespaceFilter = { bizCode: string; keyword: string }
 
@@ -54,6 +57,7 @@ type NamespaceFormValues = {
 export default function NamespacesPage() {
   const { t, locale } = usePageMessages('tianshu.namespaces')
   const fieldsWritable = useDdcWritable('DdcNamespaceBO')
+  const listView = useNamespaceListView()
   const mayMutate = useDdcPermission('tianshu.button.NamespacesPage.write') && fieldsWritable
   const { message } = App.useApp()
   const screens = Grid.useBreakpoint()
@@ -337,6 +341,11 @@ export default function NamespacesPage() {
       ),
     },
   ]
+  const dataColumns = new Map(columns.filter(column => column.key !== 'actions').map(column => [column.key, column]))
+  const visibleColumns = [
+    ...(listView.view?.visibleColumns.map(key => dataColumns.get(key)).filter(column => column !== undefined) ?? []),
+    ...columns.filter(column => column.key === 'actions'),
+  ]
 
   return (
     <div>
@@ -370,6 +379,13 @@ export default function NamespacesPage() {
         </Space>
       </Card>
       <Card size="small" title={t('list.title')}>
+        {listView.error && <Alert type="error" title={formatAdminError(listView.error, t)} />}
+        {listView.managementError && <Alert type="error" title={formatAdminError(listView.managementError, t)} />}
+        {listView.view && <NamespaceListControls view={listView.view} managementView={listView.managementView}
+          maySystem={listView.maySystem} mayPersonal={listView.mayPersonal} mayExport={listView.mayExport}
+          selectionWritable={listView.selectionWritable}
+          dataUnavailable={query.isPending || query.isFetching || !!query.error}
+          filter={submitted} page={pageState.page} />}
         <PageState
           loading={query.isPending}
           error={query.error}
@@ -378,9 +394,9 @@ export default function NamespacesPage() {
         >
           <Table<DdcNamespace>
             rowKey={(row) => row.id}
-            columns={columns}
+            columns={visibleColumns}
             dataSource={query.data?.records ?? []}
-            loading={query.isFetching}
+            loading={query.isFetching || listView.loading}
             size="small"
             scroll={{ x: 'max-content' }}
             pagination={{

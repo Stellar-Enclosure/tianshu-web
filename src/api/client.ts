@@ -154,6 +154,37 @@ export async function ddcMutationApi<T>(path: string, options: DdcRequestOptions
   return ddcApi<T>(path, options)
 }
 
+/** Downloads a same-application file with the same session and CSRF boundaries as JSON mutations. */
+export async function ddcDownload(path: '/api/v1/tianshu/namespaces/export', body: unknown): Promise<Blob> {
+  const tenant = requireDdcExpectedTenantId()
+  const requestAtStart = getDdcRequestContext()
+  const captured = gatewayAuth.context.capture()
+  const csrf = await gatewayAuth.csrf(captured.signal)
+  captured.assertCurrent()
+  if (csrf.headerName !== 'X-CSRF-TOKEN' || !csrf.token || !Number.isFinite(Date.parse(csrf.expiresAt))
+      || Date.parse(csrf.expiresAt) <= Date.now()) throw new DdcApiError(0, 'CSRF_INVALID', 'CSRF proof is invalid')
+  const response = await fetch(`${gatewayAuth.applicationBaseUrl}${path}`, {
+    method: 'POST', credentials: 'include', redirect: 'error', cache: 'no-store', signal: captured.signal,
+    headers: {'Content-Type': 'application/json', 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json',
+      [TENANT_HEADER]: encodeURIComponent(tenant), [csrf.headerName]: csrf.token}, body: JSON.stringify(body),
+  })
+  captured.assertCurrent()
+  if (!isCurrentDdcSession(requestAtStart.sessionGeneration)) throw new DOMException('Session changed', 'AbortError')
+  if (response.status === 401) unauthorizedHandler()
+  if (response.status === 403) tenantMismatchHandler()
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as {status?: string; message?: string; traceId?: string}
+    throw new DdcApiError(response.status, payload.status ?? 'REQUEST_FAILED', payload.message ?? 'Export failed', payload.traceId)
+  }
+  if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+    throw new DdcApiError(response.status, 'INVALID_RESPONSE', 'Invalid export response')
+  }
+  const blob = await response.blob()
+  captured.assertCurrent()
+  if (!isCurrentDdcSession(requestAtStart.sessionGeneration)) throw new DOMException('Session changed', 'AbortError')
+  return blob
+}
+
 export async function ddcPageApi<T>(
   path: string,
   options: DdcRequestOptions = {},

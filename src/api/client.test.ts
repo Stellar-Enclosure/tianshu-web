@@ -4,6 +4,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {
   beginDdcSession,
   ddcApi,
+  ddcDownload,
   DdcApiError,
   ddcPageApi,
   setDdcExpectedTenantId,
@@ -51,6 +52,27 @@ describe('ddcApi', () => {
 
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  it('downloads XLSX with the verified tenant and CSRF proof', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('xlsx', {status: 200,
+      headers: {'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}}))
+    await expect(ddcDownload('/api/v1/tianshu/namespaces/export', {range: 'FILTERED'})).resolves.toBeInstanceOf(Blob)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/namespaces/export')
+    expect(new Headers(init?.headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
+    expect(new Headers(init?.headers).get('X-CSRF-TOKEN')).toBe('test-csrf')
+    expect(init?.credentials).toBe('include')
+  })
+
+  it('does not dispatch a download after the authenticated session changes', async () => {
+    let finish!: (value: ReturnType<typeof csrfFixture>) => void
+    vi.mocked(gatewayAuth.csrf).mockImplementation(() => new Promise(resolve => {finish = resolve}))
+    const pending = ddcDownload('/api/v1/tianshu/namespaces/export', {})
+    beginDdcSession()
+    finish(csrfFixture())
+    await expect(pending).rejects.toMatchObject({name: 'AbortError'})
+    expect(fetch).not.toHaveBeenCalled()
+  })
 
     it('sends cookie credentials and returns data', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(record({ list: [1] })))
