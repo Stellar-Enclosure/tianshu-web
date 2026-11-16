@@ -241,6 +241,17 @@ export default function AiResourcesPage({ kind }: Props) {
         description={t('resources.description')}
       />
 
+      <Alert
+        type="info"
+        showIcon
+        message={t('siMigration.bannerTitle')}
+        action={
+          <Button type="link" size="small" onClick={() => navigate('/si/catalog')}>
+            {t('siMigration.bannerAction')}
+          </Button>
+        }
+      />
+
       <Card>
         <Space orientation="vertical" size="middle" className="tianshu-ai-page__filters">
           <ScopeSelects value={draftScope} onChange={setDraftScope} />

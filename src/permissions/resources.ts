@@ -1,5 +1,5 @@
 import {defineResources, defineMessages} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import {READ, WRITE, PUBLISH, CACHE, AI_READ, AI_WRITE, AI_PUBLISH, NAMESPACE_TEMPLATE_SYSTEM, NAMESPACE_TEMPLATE_PERSONAL, NAMESPACE_EXPORT} from './permissions'
+import {READ, WRITE, PUBLISH, CACHE, AI_READ, AI_WRITE, AI_PUBLISH, NAMESPACE_TEMPLATE_SYSTEM, NAMESPACE_TEMPLATE_PERSONAL, NAMESPACE_EXPORT, SI_READ, SI_WRITE, SI_PUBLISH, SI_PROMOTE, SI_ARCHIVE, SI_BINDING_WRITE, SI_INDEX_MANAGE} from './permissions'
 
 export const resources = defineResources([
   {"key": "tianshu.app.console", "type": "APP", "target": {"applicationCode": "tianshu"}, "requirement": {"mode": "ALL", "codes": [READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.app.console"}},
@@ -68,6 +68,18 @@ export const resources = defineResources([
   {"key": "tianshu.button.AiPromotionDialog.ai_write", "type": "BUTTON", "target": {"component": "src/pages/AiPromotionDialog.tsx", "action": "ai_write"}, "requirement": {"mode": "ALL", "codes": [AI_WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.AiPromotionDialog.ai_write"}},
   {"key": "tianshu.button.I18nPageEditor.write", "type": "BUTTON", "target": {"component": "src/pages/I18nPageEditor.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.I18nPageEditor.write"}},
   {"key": "tianshu.button.I18nPageEditor.publish", "type": "BUTTON", "target": {"component": "src/pages/I18nPageEditor.tsx", "action": "publish"}, "requirement": {"mode": "ALL", "codes": [PUBLISH]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.I18nPageEditor.publish"}},
+  {"key": "tianshu.page.siCatalog", "type": "PAGE", "target": {"route": "/si/catalog"}, "requirement": {"mode": "ALL", "codes": [SI_READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.siCatalog"}},
+  {"key": "tianshu.menu.siCatalog", "type": "MENU", "target": {"route": "/si/catalog", "parentKey": "tianshu.app.console"}, "requirement": {"mode": "ALL", "codes": [SI_READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.menu.siCatalog"}},
+  {"key": "tianshu.page.siMatrix", "type": "PAGE", "target": {"route": "/si/matrix"}, "requirement": {"mode": "ALL", "codes": [SI_READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.siMatrix"}},
+  {"key": "tianshu.menu.siMatrix", "type": "MENU", "target": {"route": "/si/matrix", "parentKey": "tianshu.app.console"}, "requirement": {"mode": "ALL", "codes": [SI_READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.menu.siMatrix"}},
+  {"key": "tianshu.page.siEditor", "type": "PAGE", "target": {"route": "/si/resources/:id"}, "requirement": {"mode": "ALL", "codes": [SI_READ]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.page.siEditor"}},
+  {"key": "tianshu.button.SiCatalogPage.write", "type": "BUTTON", "target": {"component": "src/pages/SiCatalogPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [SI_WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiCatalogPage.write"}},
+  {"key": "tianshu.button.SiCatalogPage.reindex", "type": "BUTTON", "target": {"component": "src/pages/SiCatalogPage.tsx", "action": "reindex"}, "requirement": {"mode": "ALL", "codes": [SI_INDEX_MANAGE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiCatalogPage.reindex"}},
+  {"key": "tianshu.button.SiResourceEditorPage.write", "type": "BUTTON", "target": {"component": "src/pages/SiResourceEditorPage.tsx", "action": "write"}, "requirement": {"mode": "ALL", "codes": [SI_WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiResourceEditorPage.write"}},
+  {"key": "tianshu.button.SiResourceEditorPage.publish", "type": "BUTTON", "target": {"component": "src/pages/SiResourceEditorPage.tsx", "action": "publish"}, "requirement": {"mode": "ALL", "codes": [SI_PUBLISH]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiResourceEditorPage.publish"}},
+  {"key": "tianshu.button.SiEnvMatrixPage.promote", "type": "BUTTON", "target": {"component": "src/pages/SiEnvMatrixPage.tsx", "action": "promote"}, "requirement": {"mode": "ALL", "codes": [SI_PROMOTE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiEnvMatrixPage.promote"}},
+  {"key": "tianshu.button.SiEnvMatrixPage.archive", "type": "BUTTON", "target": {"component": "src/pages/SiEnvMatrixPage.tsx", "action": "archive"}, "requirement": {"mode": "ALL", "codes": [SI_ARCHIVE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiEnvMatrixPage.archive"}},
+  {"key": "tianshu.button.SiServiceBindingPanel.binding", "type": "BUTTON", "target": {"component": "src/pages/SiServiceBindingPanel.tsx", "action": "binding"}, "requirement": {"mode": "ALL", "codes": [SI_BINDING_WRITE]}, "i18n": {"pageCode": "tianshu.web.permissions", "labelKey": "tianshu.button.SiServiceBindingPanel.binding"}},
  ] as const)
 
 export const resourceMessages = defineMessages([
@@ -124,4 +136,16 @@ export const resourceMessages = defineMessages([
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.AiPromotionDialog.ai_write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "复制与发布 AI 资源", "en-US": "Copy and publish AI resources"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.I18nPageEditor.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "保存翻译草稿", "en-US": "Save translation drafts"}},
   {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.I18nPageEditor.publish", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "发布翻译", "en-US": "Publish translations"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.siCatalog", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "SI 资产目录", "en-US": "SI resource catalog"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.menu.siCatalog", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "SI 资产目录", "en-US": "SI catalog"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.siMatrix", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "SI 多环境矩阵", "en-US": "SI environment matrix"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.menu.siMatrix", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "多环境基线矩阵", "en-US": "Environment matrix"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.page.siEditor", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "SI 原子资源编辑", "en-US": "SI atomic resource editor"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiCatalogPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "创建与修改 SI 资源", "en-US": "Create and edit SI resources"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiCatalogPage.reindex", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "重建 SI 向量索引", "en-US": "Rebuild SI vector index"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiResourceEditorPage.write", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "保存 SI 草稿", "en-US": "Save SI draft"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiResourceEditorPage.publish", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "发布 SI 版本", "en-US": "Publish SI version"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiEnvMatrixPage.promote", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "跨环境推广 SI 版本", "en-US": "Promote SI version"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiEnvMatrixPage.archive", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "归档 SI 资源", "en-US": "Archive SI resource"}},
+  {"pageCode": "tianshu.web.permissions", "key": "tianshu.button.SiServiceBindingPanel.binding", "defaultLocale": "zh-CN", "defaults": {"zh-CN": "管理 SI 服务版本绑定", "en-US": "Manage SI service bindings"}},
  ] as const)

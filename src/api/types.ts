@@ -514,3 +514,180 @@ export type DdcAiUsageFeedbackPageParams = {
   pageNo?: number
   pageSize?: number
 }
+
+export type SiResourceKind = 'AGENT' | 'MCP' | 'PROMPT' | 'SKILL'
+export type SiLifecycleStatus = 'DRAFT' | 'PUBLISHED' | 'DEPRECATED' | 'ARCHIVED'
+export type SiBindingStatus = 'ACTIVE' | 'INACTIVE'
+export type SiSourceType = 'CONSOLE' | 'AUTO_REPORTED' | 'GITOPS'
+
+export type SiResourceItem = {
+  id: number
+  bizCode: string
+  namespaceId: number
+  namespaceCode?: string
+  envCode: string
+  appCode: string
+  kind: SiResourceKind
+  resourceKey: string
+  displayName: string
+  description?: string
+  tags?: string[]
+  lifecycleStatus: SiLifecycleStatus
+  sourceType: SiSourceType
+  specJson?: string
+  contentSha256?: string
+  lastVersionNo?: number
+  currentVersionId?: number | null
+  currentVersionNo?: number | null
+  version: number
+  publishedTime?: string | null
+  createTime?: string
+  updateTime?: string
+}
+
+export type SiVersionItem = {
+  id: number
+  resourceId: number
+  versionNo: number
+  kind: SiResourceKind
+  envCode: string
+  specJson?: string
+  digestSha256: string
+  sourceEnvCode?: string | null
+  sourceVersionNo?: number | null
+  changeNote?: string
+  indexStatus?: string
+  createUserId?: string
+  publishedTime?: string | null
+  indexedTime?: string | null
+}
+
+export type SiBindingItem = {
+  id: number
+  bizCode: string
+  namespaceId: number
+  envCode: string
+  appCode: string
+  kind: SiResourceKind
+  resourceId: number
+  resourceKey: string
+  pinnedVersionNo?: number | null
+  status: SiBindingStatus
+  boundTime?: string
+}
+
+export type SiReferenceItem = {
+  id: number
+  sourceResourceId?: number
+  sourceVersionNo?: number
+  sourceType: string
+  sourceKey: string
+  targetType: string
+  targetKind?: SiResourceKind
+  targetKey: string
+  pinnedVersionNo?: number | null
+  envCode: string
+  required: boolean
+  roleHint?: string | null
+}
+
+export type SiResourceDescriptor = {
+  tenantId: number
+  bizCode: string
+  namespaceCode: string
+  envCode: string
+  resourceId: number
+  kind: SiResourceKind
+  resourceKey: string
+  displayName: string
+  description?: string
+  status: SiLifecycleStatus
+  sourceType: SiSourceType
+  activeVersionNo?: number | null
+  digestSha256?: string
+  labels?: Record<string, string>
+  publishedAt?: string | null
+  updatedAt?: string | null
+}
+
+export type SiSearchHit = {
+  resource: SiResourceDescriptor
+  hybridScore: number
+  vectorScore: number
+  ftsScore: number
+  matchedChunkText?: string | null
+  degradedToFtsOnly: boolean
+  rank: number
+}
+
+export type SiSemanticSearchResult = {
+  degradedToFtsOnly: boolean
+  totalHits: number
+  hits: SiSearchHit[]
+}
+
+export type SiEnvMatrixItem = {
+  versionId: number
+  resourceId: number
+  envCode: string
+  activeVersionNo: number
+  digestSha256: string
+  sourceEnvCode?: string | null
+  sourceVersionNo?: number | null
+  indexStatus?: string
+  published: boolean
+  publishedTime?: string | null
+}
+
+export type SiSearchParams = {
+  bizCode?: string
+  namespaceCode?: string
+  envCode?: string
+  appCode?: string
+  kind?: SiResourceKind
+  lifecycleStatus?: SiLifecycleStatus
+  keyword?: string
+  tag?: string
+  pageNo?: number
+  pageSize?: number
+}
+
+export type SiCreateCommand = {
+  bizCode: string
+  namespaceCode: string
+  envCode: string
+  appCode: string
+  kind: SiResourceKind
+  resourceKey: string
+  displayName: string
+  description?: string
+  tags?: string[]
+  sourceType?: SiSourceType
+  specJson: string
+}
+
+export type SiDraftCommand = {
+  expectedVersion: number
+  displayName: string
+  description?: string
+  tags?: string[]
+  specJson: string
+}
+
+export type SiLifecycleCommand = {
+  expectedVersion?: number
+  targetVersionNo?: number
+  targetEnvCode?: string
+  action?: 'DEPRECATE'
+  changeNote?: string
+}
+
+export type SiBindingCommand = {
+  bizCode: string
+  namespaceCode: string
+  envCode: string
+  appCode: string
+  kind: SiResourceKind
+  resourceKey: string
+  pinnedVersionNo?: number | null
+}

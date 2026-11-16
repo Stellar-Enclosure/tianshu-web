@@ -31,6 +31,10 @@ interface WujieRuntimeWindow extends Window {
 
 // 平台自己的导航树；shared 只负责左侧递归树的渲染与高亮。
 const navigation: readonly EnterpriseNavigationItem[] = [
+  { key: 'si-resources', label: 'nav.siResources', icon: <DeploymentUnitOutlined />, children: [
+    { key: 'si-catalog', label: 'nav.siCatalog', path: '/si/catalog', icon: <AppstoreOutlined /> },
+    { key: 'si-matrix', label: 'nav.siMatrix', path: '/si/matrix', icon: <ClusterOutlined /> },
+  ] },
   { key: 'ai-resources', label: 'nav.aiResources', icon: <FileTextOutlined />, children: [
     { key: 'ai-prompts', label: 'nav.prompts', path: '/ai/prompts', icon: <FileTextOutlined /> },
     { key: 'ai-skills', label: 'nav.skills', path: '/ai/skills', icon: <FileTextOutlined /> },

@@ -18,6 +18,9 @@ import InstancesPage from './pages/InstancesPage'
 import BindingsPage from './pages/BindingsPage'
 import AiResourcesPage from './pages/AiResourcesPage'
 import AiResourceEditorPage from './pages/AiResourceEditorPage'
+import SiCatalogPage from './pages/SiCatalogPage'
+import SiEnvMatrixPage from './pages/SiEnvMatrixPage'
+import SiResourceEditorPage from './pages/SiResourceEditorPage'
 import I18nPage from './pages/I18nPage'
 import {AdminI18nProvider, PageLanguageBoundary} from './i18n/AdminI18nProvider'
 
@@ -52,6 +55,10 @@ const routes = [{
     { path: 'ai/prompts', element: <RequirePermission resourceKey="tianshu.page.prompts"><PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="PROMPT" /></PageLanguageBoundary></RequirePermission> },
     { path: 'ai/skills', element: <RequirePermission resourceKey="tianshu.page.skills"><PageLanguageBoundary pageCode="tianshu.ai.resources"><AiResourcesPage kind="SKILL" /></PageLanguageBoundary></RequirePermission> },
     { path: 'ai/resources/:id', element: <RequirePermission resourceKey="tianshu.page.aiEditor"><PageLanguageBoundary pageCode="tianshu.ai.editor"><AiResourceEditorPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'si/catalog', element: <RequirePermission resourceKey="tianshu.page.siCatalog"><PageLanguageBoundary pageCode="tianshu.si"><SiCatalogPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'si/matrix', element: <RequirePermission resourceKey="tianshu.page.siMatrix"><PageLanguageBoundary pageCode="tianshu.si"><SiEnvMatrixPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'si/resources/new', element: <RequirePermission resourceKey="tianshu.page.siEditor"><PageLanguageBoundary pageCode="tianshu.si"><SiResourceEditorPage /></PageLanguageBoundary></RequirePermission> },
+    { path: 'si/resources/:id', element: <RequirePermission resourceKey="tianshu.page.siEditor"><PageLanguageBoundary pageCode="tianshu.si"><SiResourceEditorPage /></PageLanguageBoundary></RequirePermission> },
     { path: 'metadata/i18n', element: <RequirePermission resourceKey="tianshu.page.i18n"><PageLanguageBoundary pageCode="tianshu.i18n"><I18nPage /></PageLanguageBoundary></RequirePermission> },
   ],
 }]
