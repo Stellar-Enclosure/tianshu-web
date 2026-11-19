@@ -37,24 +37,20 @@ const jsonResponse = (body: unknown, status = 200): Response => new Response(
   { status, headers: { 'Content-Type': 'application/json' } },
 )
 
-const instance = {
-  id: 'db-instance-1',
-  instanceId: 'instance-1',
-  bizCode: 'pay-biz',
-  appCode: 'orders',
-  env: 'prod',
-  host: '10.0.0.8',
-  port: 8080,
-  pid: '1008',
-  sdkVersion: '5.3.2',
-  leaseId: 'lease-1',
-  leaseExpireAt: '2026-08-27T04:00:00Z',
-  status: 'ONLINE',
-  lastHeartbeatAt: '2026-08-27T03:59:00Z',
-  createdAt: '2026-08-27T03:00:00Z',
-  updatedAt: '2026-08-27T03:59:00Z',
-  runtimeMetadata: { zone: 'az-a' },
-}
+const workload = () => ({
+  targetBindingId: 'orders-primary',
+  clusterId: 'prod-cluster',
+  k8sNamespace: 'orders-app',
+  workloadUid: 'deployment-uid',
+  status: 'FRESH',
+  observedAt: new Date().toISOString(),
+  validUntil: new Date(Date.now() + 60_000).toISOString(),
+  desiredReplicas: 2,
+  pods: [
+    { podUid: 'pod-1', podName: 'orders-1', containerName: 'app', ready: true, restartCount: 0 },
+    { podUid: 'pod-2', podName: 'orders-2', containerName: 'app', ready: false, restartCount: 1 },
+  ],
+})
 
 const scopeInputs = (): HTMLInputElement[] =>
   Array.from(document.querySelectorAll('input.ant-select-input')) as HTMLInputElement[]
@@ -105,24 +101,61 @@ afterEach(() => {
 })
 
 describe('InstancesPage', () => {
-  it.each([null, undefined])('shows the host when a config client does not report a port (%s)', async (port) => {
-    mockScopeEndpoints(() => jsonResponse(pageRecord([{ ...instance, port }], 1)))
+  it('shows observed readiness with the workload target and its two pods', async () => {
+    mockScopeEndpoints(() => jsonResponse(pageRecord([workload()], 1)))
     renderWithQueryClient(<InstancesPage />)
     await fillCompleteScope()
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
-    expect(await screen.findByText('10.0.0.8')).toBeInTheDocument()
-    expect(screen.queryByText('10.0.0.8:null')).not.toBeInTheDocument()
-    expect(screen.queryByText('10.0.0.8:undefined')).not.toBeInTheDocument()
+    expect(await screen.findByText('orders-primary')).toBeInTheDocument()
+    expect(screen.getByText('prod-cluster / orders-app')).toBeInTheDocument()
+    expect(screen.getByText('orders-1')).toBeInTheDocument()
+    expect(screen.getByText('orders-2')).toBeInTheDocument()
+    expect(screen.getByText('已就绪')).toBeInTheDocument()
+    expect(screen.getByText('未就绪')).toBeInTheDocument()
+    expect(screen.queryByText('最近心跳')).not.toBeInTheDocument()
+  })
+
+  it('keeps expired observations separate from a fresh workload scaled to zero', async () => {
+    mockScopeEndpoints(() => jsonResponse(pageRecord([
+      { ...workload(), validUntil: new Date(Date.now() - 1).toISOString() },
+      { ...workload(), targetBindingId: 'worker-zero', desiredReplicas: 0, pods: [] },
+    ], 2)))
+    renderWithQueryClient(<InstancesPage />)
+    await fillCompleteScope()
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
+
+    expect(await screen.findByText('观察已过期')).toBeInTheDocument()
+    expect(screen.queryByText('orders-1')).not.toBeInTheDocument()
+    expect(screen.getByText('worker-zero')).toBeInTheDocument()
+    expect(screen.getByText('0')).toBeInTheDocument()
+  })
+
+  it('expires a displayed observation without waiting for another server response', async () => {
+    let requests = 0
+    mockScopeEndpoints(() => {
+      requests += 1
+      return jsonResponse(pageRecord([
+        { ...workload(), validUntil: new Date(Date.now() + 1_200).toISOString() },
+      ], 1))
+    })
+    renderWithQueryClient(<InstancesPage />)
+    await fillCompleteScope()
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
+
+    expect(await screen.findByText('观察有效')).toBeInTheDocument()
+    expect(await screen.findByText('观察已过期', undefined, { timeout: 3_000 })).toBeInTheDocument()
+    expect(screen.queryByText('orders-1')).not.toBeInTheDocument()
+    expect(requests).toBe(1)
   })
 
   it('requests instances with submitted scope and preserves server page metadata', async () => {
-    mockScopeEndpoints(() => jsonResponse(pageRecord([instance], 21)))
+    mockScopeEndpoints(() => jsonResponse(pageRecord([workload()], 21)))
     renderWithQueryClient(<InstancesPage />)
 
     await fillCompleteScope()
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
 
-    expect(await screen.findByText('instance-1')).toBeInTheDocument()
+    expect(await screen.findByText('orders-primary')).toBeInTheDocument()
     expect(screen.getByText('共 21 条')).toBeInTheDocument()
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -130,19 +163,18 @@ describe('InstancesPage', () => {
       ),
       expect.anything(),
     )
-    expect(screen.getByText('10.0.0.8:8080')).toBeInTheDocument()
   })
 
   it('resets to the first server page when the scope is submitted again', async () => {
     mockScopeEndpoints((url) => {
       const pageNo = Number(new URL(url, 'http://tianshu.test').searchParams.get('pageNo') ?? '1')
-      return jsonResponse(pageRecord([instance], 21, pageNo))
+      return jsonResponse(pageRecord([workload()], 21, pageNo))
     })
     renderWithQueryClient(<InstancesPage />)
 
     await fillCompleteScope()
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
-    await screen.findByText('instance-1')
+    await screen.findByText('orders-primary')
 
     fireEvent.click(screen.getByTitle('2'))
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
@@ -172,7 +204,7 @@ describe('InstancesPage', () => {
           timestamp: 1,
         }, 500)
       }
-      return jsonResponse(pageRecord([instance], 1))
+      return jsonResponse(pageRecord([workload()], 1))
     })
     renderWithQueryClient(<InstancesPage />)
 
@@ -180,7 +212,7 @@ describe('InstancesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }))
     fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }))
 
-    expect(await screen.findByText('instance-1')).toBeInTheDocument()
+    expect(await screen.findByText('orders-primary')).toBeInTheDocument()
     expect(attempts).toBe(2)
   })
 })

@@ -183,26 +183,34 @@ export type DdcPublishTask = {
   updatedAt?: string
 }
 
-export type DdcInstance = {
-  id: string
-  instanceId: string
-  bizCode: string
-  appCode: string
-  env: string
-  host: string
-  port: number
-  pid?: string
-  sdkVersion?: string
-  leaseId?: string
-  leaseExpireAt?: string
-  status: string
-  lastHeartbeatAt?: string
-  createdAt?: string
-  updatedAt?: string
-  runtimeMetadata?: Record<string, string>
-}
+export type DdcWorkloadObservationStatus =
+  | 'INITIALIZING'
+  | 'RELISTING'
+  | 'FRESH'
+  | 'STALE'
+  | 'UNAVAILABLE'
+  | 'IDENTITY_CONFLICT'
+  | 'CLOSED'
+  | 'UNKNOWN'
 
-export type DdcInstancePage = PageResultRecord<DdcInstance>
+export type DdcWorkloadObservation = {
+  targetBindingId: string
+  clusterId: string
+  k8sNamespace: string
+  workloadUid: string
+  status: DdcWorkloadObservationStatus
+  reasonCode?: string | null
+  observedAt?: string | null
+  validUntil?: string | null
+  desiredReplicas?: number | null
+  pods?: {
+    podUid: string
+    podName: string
+    containerName: string
+    ready: boolean
+    restartCount: number
+  }[]
+}
 
 export type DdcCapabilityState =
   | 'READY'

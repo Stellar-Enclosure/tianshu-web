@@ -1,11 +1,11 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, Space, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ddcPageApi } from '../api/client'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminPageState as PageState } from '../components/page/AdminPageState'
-import type { DdcInstance } from '../api/types'
+import type { DdcWorkloadObservation, DdcWorkloadObservationStatus } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
 import { usePageState } from '../hooks/usePageState'
@@ -23,21 +23,25 @@ const scopeReady = (scope: ScopeValue): boolean =>
   && scope.env.trim() !== ''
   && scope.appCode.trim() !== ''
 
+const observationStatus = (row: DdcWorkloadObservation, now: number): DdcWorkloadObservationStatus => {
+  if (row.status !== 'FRESH') return row.status ?? 'UNKNOWN'
+  const expiry = Date.parse(row.validUntil ?? '')
+  if (!Number.isFinite(expiry)) return 'UNKNOWN'
+  return expiry > now ? 'FRESH' : 'STALE'
+}
+
 export default function InstancesPage() {
   const { t, locale } = usePageMessages('tianshu.instances')
-  const instanceStatusLabel = (status?: string): string => {
-    const value = status || 'UNKNOWN'
-    return ['ONLINE', 'OFFLINE', 'UNKNOWN'].includes(value) ? t(`status.${value}`) : value
-  }
   const pageState = usePageState()
   const [draft, setDraft] = useState<ScopeValue>({ ...emptyScope })
   const [submitted, setSubmitted] = useState<ScopeValue | null>(null)
   const [scopeError, setScopeError] = useState(false)
+  const [lastExpiry, setLastExpiry] = useState(() => Date.now())
 
   const instancesQuery = useQuery({
     enabled: submitted !== null,
     queryKey: ['tianshu', 'instances', submitted, pageState.page],
-    queryFn: ({ signal }) => ddcPageApi<DdcInstance>(
+    queryFn: ({ signal }) => ddcPageApi<DdcWorkloadObservation>(
       `/api/v1/tianshu/instances/page?${buildQuery({
         bizCode: submitted!.bizCode,
         env: submitted!.env,
@@ -47,9 +51,21 @@ export default function InstancesPage() {
       })}`,
       { signal },
     ),
-    placeholderData: keepPreviousData,
     staleTime: 0,
   })
+
+  const observations = instancesQuery.data?.records
+  const observedClock = Math.max(lastExpiry, instancesQuery.dataUpdatedAt)
+  useEffect(() => {
+    const nextExpiry = Math.min(...(observations ?? [])
+      .filter((row) => row.status === 'FRESH')
+      .map((row) => Date.parse(row.validUntil ?? ''))
+      .filter((expiry) => Number.isFinite(expiry) && expiry > observedClock))
+    if (!Number.isFinite(nextExpiry)) return
+    const delay = Math.min(2_147_483_647, Math.max(0, nextExpiry - Date.now()))
+    const timer = window.setTimeout(() => setLastExpiry(Date.now()), delay)
+    return () => window.clearTimeout(timer)
+  }, [observations, observedClock])
 
   const applyFilter = () => {
     const next = { ...draft }
@@ -69,35 +85,68 @@ export default function InstancesPage() {
     pageState.resetPage()
   }
 
-  const rows = instancesQuery.data?.records ?? []
-  const columns: TableColumnsType<DdcInstance> = [
+  const rows = observations ?? []
+  const columns: TableColumnsType<DdcWorkloadObservation> = [
     {
-      title: t('fields.instanceId'),
-      dataIndex: 'instanceId',
-      key: 'instanceId',
+      title: t('fields.target'),
+      dataIndex: 'targetBindingId',
+      key: 'targetBindingId',
       render: (value: string) => <Typography.Text code copyable={{ text: value }}>{value}</Typography.Text>,
     },
     {
-      title: t('fields.scope'),
-      key: 'scope',
-      render: (_: unknown, row) => `${row.bizCode} / ${row.env} / ${row.appCode}`,
-    },
-    {
-      title: t('fields.address'),
-      key: 'address',
-      render: (_: unknown, row) => <Typography.Text code>{row.port == null ? row.host : `${row.host}:${row.port}`}</Typography.Text>,
+      title: t('fields.location'),
+      key: 'location',
+      render: (_: unknown, row) => `${row.clusterId} / ${row.k8sNamespace}`,
     },
     {
       title: t('common.status'),
-      dataIndex: 'status',
       key: 'status',
-      render: (value: string) => <Tag color={value === 'ONLINE' ? 'green' : 'default'}>{instanceStatusLabel(value)}</Tag>,
+      render: (_: unknown, row) => {
+        const status = observationStatus(row, observedClock)
+        return (
+          <Space orientation="vertical" size={0}>
+            <Tag color={status === 'FRESH' ? 'blue' : 'default'}>{t(`status.${status}`)}</Tag>
+            {row.reasonCode && <Typography.Text type="secondary" code>{row.reasonCode}</Typography.Text>}
+          </Space>
+        )
+      },
     },
-    { title: t('fields.leaseId'), dataIndex: 'leaseId', key: 'leaseId', render: (value?: string) => value ?? '—' },
-    { title: t('fields.leaseExpireAt'), dataIndex: 'leaseExpireAt', key: 'leaseExpireAt', render: (value?: string) => formatTime(value, locale) },
-    { title: t('fields.lastHeartbeatAt'), dataIndex: 'lastHeartbeatAt', key: 'lastHeartbeatAt', render: (value?: string) => formatTime(value, locale) },
-    { title: t('fields.sdkVersion'), dataIndex: 'sdkVersion', key: 'sdkVersion', render: (value?: string) => value ?? '—' },
-    { title: t('fields.pid'), dataIndex: 'pid', key: 'pid', render: (value?: string) => value ?? '—' },
+    {
+      title: t('fields.desiredReplicas'),
+      key: 'desiredReplicas',
+      render: (_: unknown, row) => observationStatus(row, observedClock) === 'FRESH'
+        ? row.desiredReplicas ?? '—'
+        : '—',
+    },
+    {
+      title: t('fields.pods'),
+      key: 'pods',
+      render: (_: unknown, row) => {
+        if (observationStatus(row, observedClock) !== 'FRESH' || !row.pods?.length) return '—'
+        return (
+          <Space orientation="vertical" size={2}>
+            {row.pods.map((pod) => (
+              <Space key={pod.podUid}>
+                <Typography.Text code>{pod.podName}</Typography.Text>
+                <Tag color={pod.ready ? 'green' : 'orange'}>{t(pod.ready ? 'pod.ready' : 'pod.notReady')}</Tag>
+              </Space>
+            ))}
+          </Space>
+        )
+      },
+    },
+    {
+      title: t('fields.observedAt'),
+      dataIndex: 'observedAt',
+      key: 'observedAt',
+      render: (value?: string | null) => formatTime(value, locale),
+    },
+    {
+      title: t('fields.validUntil'),
+      dataIndex: 'validUntil',
+      key: 'validUntil',
+      render: (value?: string | null) => formatTime(value, locale),
+    },
   ]
 
   return (
@@ -144,8 +193,8 @@ export default function InstancesPage() {
             showPartial={instancesQuery.data !== undefined}
             onRetry={() => { void instancesQuery.refetch() }}
           >
-            <Table<DdcInstance>
-              rowKey={(row) => row.instanceId}
+            <Table<DdcWorkloadObservation>
+              rowKey="targetBindingId"
               columns={columns}
               dataSource={rows}
               loading={instancesQuery.isFetching}

@@ -31,7 +31,7 @@ describe('App', () => {
     expect(await screen.findByText('Tianshu 管理端')).toBeInTheDocument()
   })
 
-  it('renders configuration client instances at the dedicated route', async () => {
+  it('renders configuration workload instances at the dedicated route', async () => {
     auth.authorized = true
     window.history.replaceState({}, '', '/instances')
     const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
@@ -65,6 +65,6 @@ describe('App', () => {
 
     renderWithQueryClient(<App />)
 
-    expect(await screen.findByText('配置客户端实例')).toBeInTheDocument()
+    expect(await screen.findByText('配置工作负载实例')).toBeInTheDocument()
   })
 })
