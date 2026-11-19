@@ -20,7 +20,7 @@ Tianshu Admin Web 是 Stellar Enclosure 动态配置中心的独立管理控制�
 
 ## 认证
 
-控制台使用共享 SDK 的固定应用协议。默认别名为 `edge-tianshu`，身份入口是 `/apps/edge-tianshu/auth/identity`，当前权限视图来自 `/apps/edge-tianshu/api/v1/authorization/effective-permissions`。浏览器只持有 `HttpOnly` 会话 Cookie，不存储或转发 AT/RT；所有写请求使用同一应用的 CSRF 证明，业务请求不会自动重放。
+控制台使用共享公共 OAuth2 SDK 和 S256 PKCE。权限快照、业务 REST 和 XLSX 导出使用天枢 Resource 的访问令牌。浏览器在内存保留凭据，按可信 issuer、主体、租户和目录绑定校验权限快照。业务操作仍由服务端验证权限和数据范围。
 
 `TIANSHU_READ` 决定控制台准入；49 个 APP、PAGE、MENU、BUTTON 声明覆盖现有路由、菜单及写操作，统一调用共享 guard。权限视图绑定 issuer、subject、tenant、完整目录范围、目录/授权/策略版本、活动角色与请求 epoch。过期、身份或租户变化时清空旧视图、查询缓存及迟到响应；未保存提示只保护主动离开，不能阻止安全失效。
 
@@ -58,7 +58,7 @@ PAC_BUILD_ID=release-build-id npm run build
 
 唯一构建入口依次执行 contract prepare、静态扫描/校验、TypeScript 与 Vite，并嵌入 `permission-build.json`、生成 `.generated/permissions/artifact-record.json`。`LOCAL_UNCOMMITTED` 只表示同批源码验证；生产交付使用 `PINNED_COMMIT`、固定提交、匹配的依赖锁与明确 buildId。
 
-构建时必须设置 `VITE_PERMISSION_NAMESPACE`、`VITE_PERMISSION_ENVIRONMENT`，匹配宿主固定目录。`VITE_OAUTH_APP_ALIAS` 默认 `edge-tianshu`；`VITE_YUHENG_ORIGIN` 为 EDGE origin，`VITE_BASE_PATH` 为静态挂载路径。`npm run dev` 与 preview 将 `/apps` 交给 `TIANSHU_AUTH_PROXY`，默认 `http://127.0.0.1:18180`。
+构建时设置 `VITE_PERMISSION_NAMESPACE` 与 `VITE_PERMISSION_ENVIRONMENT`。部署提供 `VITE_TIANSHU_OAUTH_CONFIG`，包含已审批的 `webOrigin`、`resource`、`apiBaseUrl`、`activeResource` 与 `registrations`。按 `VITE_BASE_PATH` 为每个注册配置精确 HTTPS 登录回调 `auth/oidc/callback/{registrationId}`。Portal 的弹窗回调使用 `auth/oidc/popup/{registrationId}` 并与 Portal 窗口同源，弹窗失败可独立打开。浏览器与业务 API 通过审批的同源路由访问，跨源部署在发布前接入并验证业务 API 的 CORS。应用退出与统一退出均清理当前权限和在途请求。
 
 注册中心首次请求会携带完整四级作用域。本地作用域不是
 `default / default-app / dev / default` 时，可设置以下构建时默认值：

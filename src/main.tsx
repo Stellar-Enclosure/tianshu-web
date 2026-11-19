@@ -1,3 +1,4 @@
+import {gatewayAuth} from './auth/gatewayAuth'
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -41,8 +42,12 @@ const mount = (): void => {
 }
 
 const unmount = (): void => {
-  root?.unmount()
-  root = undefined
+  try {
+    root?.unmount()
+  } finally {
+    void gatewayAuth.logout().catch(() => gatewayAuth.invalidate())
+    root = undefined
+  }
 }
 
 if (runtimeWindow.__POWERED_BY_WUJIE__) {

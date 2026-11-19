@@ -5,7 +5,7 @@ import { Alert, App, Button, Card, Form, Input, InputNumber, Space, Tabs } from 
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DdcApiError } from '../api/client'
-import { createSiResource, ddcSiQueryKeys, getSiResource, publishSiDraft, replaceSiDraft } from '../api/si'
+import { createSiResource, ddcSiQueryKeys, getSiResource, getSiResourceVersion, publishSiDraft, replaceSiDraft } from '../api/si'
 import type { SiResourceKind } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
@@ -17,7 +17,31 @@ export const siEditorMessages = defineMessages([
   { pageCode: 'tianshu.si', key: 'si.editor.editTitle', defaultLocale: 'zh-CN', defaults: { 'zh-CN': '编辑超级智能原子资源', 'en-US': 'Edit SI Atomic Resource' } },
 ])
 
-const SECRET_LEAK_PATTERN = /(sk-[A-Za-z0-9_-]{8,}|Bearer\s+(?!vault:\/\/)[A-Za-z0-9._-]+|\"(?:apiKey|secret|password|token)\"\s*:\s*\"(?!vault:\/\/)[^\"]+\")/i
+const SECRET_LEAK_PATTERN = /(sk-[A-Za-z0-9_-]{8,}|Bearer\s+(?!vault:\/\/)[A-Za-z0-9._-]+|"(?:apiKey|secret|password|token)"\s*:\s*"(?!vault:\/\/)[^"]+")/i
+
+const newMcpDocument = JSON.stringify({
+  schemaVersion: 'mcp-server-v2',
+  sourceType: 'REMOTE_HTTPS',
+  protocolVersion: '2025-11-25',
+  transport: 'STREAMABLE_HTTP',
+  endpoint: '',
+  capabilityFingerprint: '',
+  tools: [],
+}, null, 2)
+
+const readDocument = (text: string): Record<string, unknown> => {
+  const value: unknown = JSON.parse(text)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_MCP_DOCUMENT')
+  return value as Record<string, unknown>
+}
+
+const capabilityFingerprint = (text?: string): string | undefined => {
+  if (!text) return undefined
+  try {
+    const value = readDocument(text).capabilityFingerprint
+    return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : undefined
+  } catch { return undefined }
+}
 
 export default function SiResourceEditorPage() {
   const { t } = usePageMessages('tianshu.si')
@@ -37,6 +61,7 @@ export default function SiResourceEditorPage() {
   const [modelKey, setModelKey] = useState('gpt-6-luna')
   const [systemPromptKey, setSystemPromptKey] = useState('')
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(30)
+  const [mcpDocumentMode, setMcpDocumentMode] = useState(false)
   const [mcpTransport, setMcpTransport] = useState('STDIO')
   const [mcpEndpoint, setMcpEndpoint] = useState('')
   const [mcpCommand, setMcpCommand] = useState('')
@@ -48,33 +73,49 @@ export default function SiResourceEditorPage() {
   const detailQuery = useQuery({
     queryKey: ddcSiQueryKeys.detail(id ?? 'new'),
     enabled: !isNew,
+    refetchOnWindowFocus: false,
     queryFn: ({ signal }) => getSiResource(id!, { signal }),
   })
+
+  const publishedVersion = detailQuery.data?.currentVersionNo
+  const publishedMcp = useQuery({
+    queryKey: ddcSiQueryKeys.version(id ?? 'new', publishedVersion ?? ''),
+    enabled: !isNew && detailQuery.data?.kind === 'MCP' && publishedVersion != null,
+    queryFn: ({signal}) => getSiResourceVersion(id!, publishedVersion!, {signal}),
+  })
+  const draftFingerprint = capabilityFingerprint(rawSpecJson)
+  const publishedFingerprint = capabilityFingerprint(publishedMcp.data?.specJson)
 
   useEffect(() => {
     if (!detailQuery.data) return
     const res = detailQuery.data
-    setBizCode(res.bizCode)
-    setNamespaceCode(res.namespaceCode ?? 'core')
-    setEnvCode(res.envCode)
-    setAppCode(res.appCode)
-    setKind(res.kind)
-    setResourceKey(res.resourceKey)
-    setDisplayName(res.displayName)
-    setDescription(res.description ?? '')
-    setRawSpecJson(res.specJson ?? '{}')
-    try {
-      const parsed = JSON.parse(res.specJson ?? '{}') as Record<string, unknown>
-      if (typeof parsed.modelKey === 'string') setModelKey(parsed.modelKey)
-      if (typeof parsed.systemPromptKey === 'string') setSystemPromptKey(parsed.systemPromptKey)
-      if (typeof parsed.timeoutSeconds === 'number') setTimeoutSeconds(parsed.timeoutSeconds)
-      if (typeof parsed.transport === 'string') setMcpTransport(parsed.transport)
-      if (typeof parsed.endpoint === 'string') setMcpEndpoint(parsed.endpoint)
-      if (typeof parsed.command === 'string') setMcpCommand(parsed.command)
-      if (parsed.headers) setMcpHeadersJson(JSON.stringify(parsed.headers))
-    } catch {
-      // Keep raw string fallback intact
-    }
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      setBizCode(res.bizCode)
+      setNamespaceCode(res.namespaceCode ?? 'core')
+      setEnvCode(res.envCode)
+      setAppCode(res.appCode)
+      setKind(res.kind)
+      setResourceKey(res.resourceKey)
+      setDisplayName(res.displayName)
+      setDescription(res.description ?? '')
+      setRawSpecJson(res.specJson ?? '{}')
+      try {
+        const parsed = readDocument(res.specJson ?? '{}')
+        setMcpDocumentMode(res.kind === 'MCP' && 'schemaVersion' in parsed)
+        if (typeof parsed.modelKey === 'string') setModelKey(parsed.modelKey)
+        if (typeof parsed.systemPromptKey === 'string') setSystemPromptKey(parsed.systemPromptKey)
+        if (typeof parsed.timeoutSeconds === 'number') setTimeoutSeconds(parsed.timeoutSeconds)
+        if (typeof parsed.transport === 'string') setMcpTransport(parsed.transport)
+        if (typeof parsed.endpoint === 'string') setMcpEndpoint(parsed.endpoint)
+        if (typeof parsed.command === 'string') setMcpCommand(parsed.command)
+        if (parsed.headers) setMcpHeadersJson(JSON.stringify(parsed.headers))
+      } catch {
+        setMcpDocumentMode(res.kind === 'MCP')
+      }
+    })
+    return () => { active = false }
   }, [detailQuery.data])
 
   const buildSpecJson = (): string => {
@@ -87,12 +128,20 @@ export default function SiResourceEditorPage() {
       })
     }
     if (kind === 'MCP') {
-      const headersObj = JSON.parse(mcpHeadersJson || '{}') as Record<string, string>
-      return JSON.stringify(
-        mcpTransport === 'STDIO'
-          ? { transport: 'STDIO', command: mcpCommand, headers: headersObj }
-          : { transport: mcpTransport, endpoint: mcpEndpoint, headers: headersObj },
-      )
+      const document = readDocument(rawSpecJson)
+      if (mcpDocumentMode) return rawSpecJson
+      if (document.transport === mcpTransport
+        && (mcpTransport === 'STDIO' ? document.command === mcpCommand : document.endpoint === mcpEndpoint)
+        && JSON.stringify(document.headers ?? {}) === JSON.stringify(readDocument(mcpHeadersJson))) return rawSpecJson
+      const next: Record<string, unknown> = {...document, transport: mcpTransport, headers: readDocument(mcpHeadersJson)}
+      if (mcpTransport === 'STDIO') {
+        delete next.endpoint
+        return JSON.stringify({...next, command: mcpCommand})
+      }
+      delete next.command
+      delete next.args
+      delete next.env
+      return JSON.stringify({...next, endpoint: mcpEndpoint})
     }
     return rawSpecJson
   }
@@ -100,7 +149,7 @@ export default function SiResourceEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const composed = buildSpecJson()
-      if (SECRET_LEAK_PATTERN.test(composed) || SECRET_LEAK_PATTERN.test(mcpHeadersJson)) {
+      if (SECRET_LEAK_PATTERN.test(composed)) {
         setSecretLeakDetected(true)
         throw new Error('SECRET_LEAK_PRECHECK')
       }
@@ -204,7 +253,12 @@ export default function SiResourceEditorPage() {
       <Card style={{ marginBottom: 16 }}>
         <Form layout="vertical">
           <Form.Item label={t('si.editor.kindLabel')}>
-            <select value={kind} onChange={(e) => setKind(e.target.value as SiResourceKind)} disabled={!isNew}>
+            <select value={kind} onChange={(e) => {
+              const next = e.target.value as SiResourceKind
+              setKind(next)
+              setMcpDocumentMode(next === 'MCP')
+              setRawSpecJson(next === 'MCP' ? newMcpDocument : '{}')
+            }} disabled={!isNew}>
               <option value="AGENT">{t('si.kind.AGENT')}</option>
               <option value="MCP">{t('si.kind.MCP')}</option>
               <option value="PROMPT">{t('si.kind.PROMPT')}</option>
@@ -235,7 +289,7 @@ export default function SiResourceEditorPage() {
             </>
           )}
 
-          {kind === 'MCP' && (
+          {kind === 'MCP' && !mcpDocumentMode && (
             <>
               <Form.Item label={t('si.editor.transportLabel')}>
                 <select
@@ -268,10 +322,23 @@ export default function SiResourceEditorPage() {
             </>
           )}
 
-          {(kind === 'PROMPT' || kind === 'SKILL') && (
+          {(kind === 'PROMPT' || kind === 'SKILL' || (kind === 'MCP' && mcpDocumentMode)) && (
             <Form.Item label={t('si.editor.specJsonLabel')}>
-              <Input.TextArea rows={6} value={rawSpecJson} onChange={(e) => setRawSpecJson(e.target.value)} />
+              <Input.TextArea data-testid="si-spec-json" rows={kind === 'MCP' ? 15 : 6} spellCheck={false} value={rawSpecJson} onChange={(e) => setRawSpecJson(e.target.value)} />
             </Form.Item>
+          )}
+          {kind === 'MCP' && mcpDocumentMode && (
+            <dl>
+              <dt>{t('si.editor.draftFingerprint')}</dt>
+              <dd><code>{draftFingerprint ?? '—'}</code></dd>
+              {publishedVersion != null && <>
+                <dt>{t('si.editor.publishedFingerprint')} / {publishedVersion}</dt>
+                <dd><code>{publishedFingerprint ?? '—'}</code></dd>
+                {draftFingerprint && publishedFingerprint && draftFingerprint !== publishedFingerprint && (
+                  <dd>{t('si.editor.fingerprintChanged')}</dd>
+                )}
+              </>}
+            </dl>
           )}
         </Form>
       </Card>

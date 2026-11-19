@@ -58,15 +58,22 @@ export type RegistryService = {
 
 export type RegistryInstance = {
   instanceId: string
-  leaseId?: string
-  host: string
   port: number
-  secure: boolean
-  status: string
-  registeredAt?: string
-  lastHeartbeatAt?: string
-  expireAt?: string
-  metadata?: { buildId?: string }
+  metadata?: {
+    observationSource?: 'KUBERNETES'
+    bindingId?: string
+    bindingRevision?: string
+    clusterId?: string
+    kubernetesNamespace?: string
+    serviceUid?: string
+    podUid?: string
+    podName?: string
+    observedAt?: string
+    validUntil?: string
+    ready?: 'true' | 'false'
+    serving?: 'true' | 'false'
+    terminating?: 'true' | 'false'
+  }
 }
 
 export type DdcConfig = {
@@ -82,6 +89,14 @@ export type DdcConfig = {
   description?: string
   createdAt?: string
   updatedAt?: string
+}
+
+export type DdcConfigPreview = {
+  publishedRevision?: string | null
+  rolloutRequired?: boolean | null
+  changes?: {key?: string; mode?: 'HOT' | 'RESTART'; change?: 'ADDED' | 'REMOVED' | 'UPDATED' | 'RULE_CHANGED'}[]
+  secretReferences?: {key?: string; name?: string; version?: string}[]
+  targets?: {bindingId?: string; clusterId?: string; namespace?: string; workloadName?: string}[]
 }
 
 export type DdcPublishResult = {
@@ -163,7 +178,7 @@ export type DdcPublishTask = {
   appCode?: string
   env?: string
   resourceName?: string
-  targetVersion?: number
+  targetVersion?: number | string
   publishMode?: string
   resourceChecksum?: string
   attemptCount?: number
@@ -181,6 +196,53 @@ export type DdcPublishTask = {
   errorMessage?: string
   createdAt?: string
   updatedAt?: string
+  historyOnly?: boolean | null
+  desiredRevision?: string | null
+  platformState?: string | null
+  rolloutState?: string | null
+  processState?: string | null
+  observedAt?: string | null
+  observationValidUntil?: string | null
+  reasonCode?: string | null
+  targets?: DdcPublishTargetEvidence[] | null
+}
+
+export type DdcPublishTargetEvidence = {
+  targetBindingId?: string | null
+  targetRevision?: string | null
+  desiredRevision?: string | null
+  clusterId?: string | null
+  k8sNamespace?: string | null
+  workloadUid?: string | null
+  workloadGeneration?: string | null
+  observedGeneration?: string | null
+  desiredReplicas?: number | null
+  currentCount?: number | null
+  appliedCount?: number | null
+  failedCount?: number | null
+  waitingCount?: number | null
+  platformState?: string | null
+  rolloutState?: string | null
+  processState?: string | null
+  observedAt?: string | null
+  reasonCode?: string | null
+  currentProcesses?: DdcPublishProcessEvidence[] | null
+}
+
+export type DdcPublishProcessEvidence = {
+  podUid?: string | null
+  podName?: string | null
+  containerName?: string | null
+  containerId?: string | null
+  bootId?: string | null
+  ready?: boolean | null
+  restartCount?: number | null
+  startedAt?: string | null
+  appliedRevision?: string | null
+  reportSeq?: string | null
+  status?: string | null
+  errorCode?: string | null
+  lastReportedAt?: string | null
 }
 
 export type DdcWorkloadObservationStatus =

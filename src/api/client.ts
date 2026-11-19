@@ -1,4 +1,4 @@
-import {ApiError, createHttpClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {ApiError, createHttpClient, PublicOAuthError} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {gatewayAuth} from '../auth/gatewayAuth'
 import type {PermissionSnapshot, PermissionSnapshotContext} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import type {PageResultRecord, ResultEnvelope} from './types'
@@ -27,10 +27,24 @@ export const requireDdcPermissionContext = () => {
     || Date.parse(permissionContext.snapshot.snapshotExpiresAt) <= Date.now()) throw new Error('A current verified Tianshu permission view is required')
   return permissionContext
 }
-const transport = createHttpClient({baseUrl: gatewayAuth.applicationBaseUrl, credentials: 'include',
-  context: gatewayAuth.context, getCsrf: signal => gatewayAuth.csrf(signal), fetch: (...args) => globalThis.fetch(...args),
-  onAuthError: status => { if (status === 401) unauthorizedHandler(); else tenantMismatchHandler() },
-})
+const fetchResponse: typeof fetch = (...args) => globalThis.fetch(...args)
+
+function requestError(failure: unknown): never {
+  if (failure instanceof DOMException && failure.name === 'AbortError') throw failure
+  if (failure instanceof PublicOAuthError && failure.code === 'AUTHORIZATION_REQUIRED') {
+    unauthorizedHandler()
+    throw new DdcApiError(401, failure.code, 'TIANSHU_AUTHORIZATION_REQUIRED')
+  }
+  if (failure instanceof ApiError || failure instanceof DdcApiError) {
+    if (failure.status === 403 && failure.code === 'TIANSHU_ADMIN_TENANT_MISMATCH') {
+      gatewayAuth.invalidate()
+      tenantMismatchHandler()
+    }
+    if (failure instanceof DdcApiError) throw failure
+    throw new DdcApiError(failure.status, failure.code, failure.message, failure.requestId)
+  }
+  throw new DdcApiError(0, 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE', 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE')
+}
 
 export const setDdcUnauthorizedHandler = (handler: UnauthorizedHandler): void => {
   unauthorizedHandler = handler
@@ -61,7 +75,7 @@ export const isCurrentDdcSession = (sessionGeneration: number): boolean =>
 
 export const requireDdcExpectedTenantId = (): string => {
   if (!requestContext.tenantId) {
-    throw new Error('A verified Tianshu tenant is required before calling an AI endpoint')
+    throw new DdcApiError(401, 'AUTHORIZATION_REQUIRED', 'A verified Tianshu tenant is required')
   }
   return requestContext.tenantId
 }
@@ -115,19 +129,16 @@ const requestEnvelope = async (
     headers.set('Content-Type', 'application/json')
     body = JSON.stringify(options.body)
   }
-  headers.delete(TENANT_HEADER)
-  if (requestContextAtStart.tenantId) {
-    headers.set(TENANT_HEADER, encodeURIComponent(requestContextAtStart.tenantId))
-  }
   let payload: Partial<ResultEnvelope> & Record<string, unknown>
   try {
+    const tenant = requireDdcExpectedTenantId()
+    headers.set(TENANT_HEADER, encodeURIComponent(tenant))
+    const authority = gatewayAuth.authority(tenant)
+    const transport = createHttpClient({baseUrl: authority.apiBaseUrl, authority, fetch: fetchResponse,
+      onAuthError: status => { if (status === 401) unauthorizedHandler() }})
     payload = await transport.request(path, {method: options.method ?? 'GET', headers, body, signal: options.signal})
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
-    if (error instanceof ApiError) {
-      throw new DdcApiError(error.status, error.code, error.message, error.requestId)
-    }
-    throw new DdcApiError(0, 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE', 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE')
+  } catch (failure) {
+    requestError(failure)
   }
   if (!isCurrentDdcSession(requestContextAtStart.sessionGeneration)) {
     throw new DOMException('Response belongs to a previous Tianshu session', 'AbortError')
@@ -148,41 +159,47 @@ export async function ddcApi<T>(
   return payload?.data as T
 }
 
-/** The shared same-application transport obtains one CSRF proof and never replays a business mutation. */
+/** Sends one Resource-authorized mutation under the current tenant. */
 export async function ddcMutationApi<T>(path: string, options: DdcRequestOptions): Promise<T> {
-  requireDdcExpectedTenantId()
   return ddcApi<T>(path, options)
 }
 
-/** Downloads a same-application file with the same session and CSRF boundaries as JSON mutations. */
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/** The fixed binary endpoint uses the same Resource authority and epoch as JSON. */
 export async function ddcDownload(path: '/api/v1/tianshu/namespaces/export', body: unknown): Promise<Blob> {
-  const tenant = requireDdcExpectedTenantId()
-  const requestAtStart = getDdcRequestContext()
-  const captured = gatewayAuth.context.capture()
-  const csrf = await gatewayAuth.csrf(captured.signal)
-  captured.assertCurrent()
-  if (csrf.headerName !== 'X-CSRF-TOKEN' || !csrf.token || !Number.isFinite(Date.parse(csrf.expiresAt))
-      || Date.parse(csrf.expiresAt) <= Date.now()) throw new DdcApiError(0, 'CSRF_INVALID', 'CSRF proof is invalid')
-  const response = await fetch(`${gatewayAuth.applicationBaseUrl}${path}`, {
-    method: 'POST', credentials: 'include', redirect: 'error', cache: 'no-store', signal: captured.signal,
-    headers: {'Content-Type': 'application/json', 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json',
-      [TENANT_HEADER]: encodeURIComponent(tenant), [csrf.headerName]: csrf.token}, body: JSON.stringify(body),
-  })
-  captured.assertCurrent()
-  if (!isCurrentDdcSession(requestAtStart.sessionGeneration)) throw new DOMException('Session changed', 'AbortError')
-  if (response.status === 401) unauthorizedHandler()
-  if (response.status === 403) tenantMismatchHandler()
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as {status?: string; message?: string; traceId?: string}
-    throw new DdcApiError(response.status, payload.status ?? 'REQUEST_FAILED', payload.message ?? 'Export failed', payload.traceId)
-  }
-  if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
-    throw new DdcApiError(response.status, 'INVALID_RESPONSE', 'Invalid export response')
-  }
-  const blob = await response.blob()
-  captured.assertCurrent()
-  if (!isCurrentDdcSession(requestAtStart.sessionGeneration)) throw new DOMException('Session changed', 'AbortError')
-  return blob
+  try {
+    if (path !== '/api/v1/tianshu/namespaces/export') throw new TypeError('Invalid export endpoint')
+    const tenant = requireDdcExpectedTenantId()
+    const authority = gatewayAuth.authority(tenant)
+    const captured = authority.context.capture()
+    const signal = AbortSignal.any([captured.signal, AbortSignal.timeout(30_000)])
+    captured.assertCurrent()
+    const response = await fetchResponse(authority.apiBaseUrl.replace(/\/$/, '') + path, {
+      method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
+      signal, headers: {'Content-Type': 'application/json', Accept: XLSX + ', application/json',
+        [TENANT_HEADER]: encodeURIComponent(tenant), Authorization: authority.authorizationHeader()},
+      body: JSON.stringify(body),
+    })
+    captured.assertCurrent()
+    signal.throwIfAborted()
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as
+        {status?: string; code?: string; message?: string; traceId?: string} | null
+      captured.assertCurrent()
+      signal.throwIfAborted()
+      if (response.status === 401) { authority.invalidate(); unauthorizedHandler() }
+      throw new DdcApiError(response.status, payload?.status ?? payload?.code ?? 'REQUEST_FAILED',
+        payload?.message ?? 'Export failed', payload?.traceId)
+    }
+    if (response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() !== XLSX) {
+      throw new DdcApiError(response.status, 'INVALID_RESPONSE', 'Invalid export response')
+    }
+    const blob = await response.blob()
+    captured.assertCurrent()
+    signal.throwIfAborted()
+    return blob
+  } catch (failure) { return requestError(failure) }
 }
 
 export async function ddcPageApi<T>(

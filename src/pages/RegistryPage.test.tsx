@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -52,14 +50,11 @@ const service = {
 }
 
 const instance = {
-  instanceId: 'i-1',
-  host: '10.0.0.1',
+  instanceId: 'service-order-http:uid-1:8080',
   port: 8080,
-  secure: false,
-  status: 'ONLINE',
-  lastHeartbeatAt: '2026-07-31T10:00:00Z',
-  expireAt: '2026-07-31T11:00:00Z',
-  metadata: { buildId: 'b-1' },
+  metadata: {observationSource: 'KUBERNETES', bindingId: 'service-order-http', podUid: 'uid-1', podName: 'orders-pod-1',
+    observedAt: new Date(Date.now() - 1_000).toISOString(), validUntil: new Date(Date.now() + 120_000).toISOString(),
+    ready: 'true', serving: 'true'},
 }
 
 describe('RegistryPage', () => {
@@ -75,9 +70,9 @@ describe('RegistryPage', () => {
       dispatchEvent: vi.fn(),
     }))
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn((input) => {
-      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+      const endpoint = new URL(String(input))
+      const url = endpoint.pathname + endpoint.search
       if (url.includes('/registry/services/page')) {
         return Promise.resolve(jsonResponse(pageRecord([service], 12)))
       }
@@ -105,15 +100,30 @@ describe('RegistryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /查\s*看\s*实\s*例/ }))
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
       expect.stringMatching(
-        /registry\/instances\/page\?.*bizCode=pay-biz.*env=dev.*appCode=orders.*serviceName=orders\.OrderService.*pageNo=1.*pageSize=10/,
+        /registry\/instances\/page\?.*bizCode=pay-biz.*env=dev.*appCode=orders.*serviceName=orders\.OrderService.*bindingId=service-order-http.*pageNo=1.*pageSize=10/,
       ),
       expect.anything(),
     ))
-    expect(await screen.findByText('i-1')).toBeInTheDocument()
+    expect(await screen.findByText('orders-pod-1')).toBeInTheDocument()
     const instanceCalls = vi.mocked(fetch).mock.calls.filter(([input]) =>
       String(input).includes('/registry/instances/page'))
     expect(instanceCalls).toHaveLength(1)
     expect(document.querySelector('.ant-drawer-content-wrapper'))
       .toHaveStyle({ width: '100%' })
   })
+  it('does not show endpoints from an expired observation or a different Service binding', async () => {
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/services/page')) return Promise.resolve(jsonResponse(pageRecord([service], 1)))
+      if (url.pathname.endsWith('/instances/page')) return Promise.resolve(jsonResponse(pageRecord([{
+        ...instance, metadata: {...instance.metadata, bindingId: 'another-service', validUntil: new Date(Date.now() - 1_000).toISOString()},
+      }], 1)))
+      return Promise.resolve(jsonResponse(record([])))
+    })
+    renderWithQueryClient(<RegistryPage />)
+    fireEvent.click(await screen.findByRole('button', {name: /查\s*看\s*实\s*例/}))
+    expect(await screen.findByText('观测已过期')).toBeInTheDocument()
+    expect(screen.queryByText('orders-pod-1')).toBeNull()
+  })
+
 })

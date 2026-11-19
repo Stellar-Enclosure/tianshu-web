@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {
   createAiResource,
@@ -71,7 +69,6 @@ describe('Tianshu AI REST client', () => {
   beforeEach(() => {
     beginDdcSession()
     setDdcExpectedTenantId('1001')
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -88,7 +85,7 @@ describe('Tianshu AI REST client', () => {
 
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     const requestUrl = new URL(String(url), 'https://tianshu.example')
-    expect(requestUrl.pathname).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources')
+    expect(requestUrl.pathname).toBe('/api/v1/tianshu/ai/resources')
     expect(requestUrl.searchParams.get('bizCode')).toBe('retail')
     expect(requestUrl.searchParams.get('namespaceCode')).toBe('dev-space')
     expect(requestUrl.searchParams.get('env')).toBe('dev')
@@ -114,7 +111,7 @@ describe('Tianshu AI REST client', () => {
     await createAiResource(command)
 
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(String(url)).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources')
+    expect(String(url)).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual(command)
     expect(JSON.parse(String(init?.body))).not.toHaveProperty('tenantId')
@@ -127,7 +124,7 @@ describe('Tianshu AI REST client', () => {
     await getAiResource(id)
 
     expect(String(vi.mocked(fetch).mock.calls[0][0]))
-      .toBe(`/apps/edge-tianshu/api/v1/tianshu/ai/resources/${id}`)
+      .toBe(`https://tianshu.example.invalid/api/v1/tianshu/ai/resources/${id}`)
   })
 
   it('replaces the complete draft with a string revision', async () => {
@@ -142,7 +139,7 @@ describe('Tianshu AI REST client', () => {
     await replaceAiDraft('810001', command)
 
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(String(url)).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/draft')
+    expect(String(url)).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/draft')
     expect(init?.method).toBe('PUT')
     expect(JSON.parse(String(init?.body))).toEqual(command)
     expect(JSON.parse(String(init?.body)).expectedRevision).toBe('9223372036854775807')
@@ -165,7 +162,7 @@ describe('Tianshu AI REST client', () => {
     await pageAiVersions('810001', {pageNo: 2, pageSize: 10})
 
     const requestUrl = new URL(String(vi.mocked(fetch).mock.calls[0][0]), 'https://tianshu.example')
-    expect(requestUrl.pathname).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/versions')
+    expect(requestUrl.pathname).toBe('/api/v1/tianshu/ai/resources/810001/versions')
     expect(requestUrl.searchParams.get('pageNo')).toBe('2')
     expect(requestUrl.searchParams.get('pageSize')).toBe('10')
   })
@@ -176,7 +173,7 @@ describe('Tianshu AI REST client', () => {
     await getAiVersion('810001', '9007199254740993')
 
     expect(String(vi.mocked(fetch).mock.calls[0][0]))
-      .toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/versions/9007199254740993')
+      .toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/versions/9007199254740993')
   })
 
   it('reuses the supplied Idempotency-Key for publish retries', async () => {
@@ -190,7 +187,7 @@ describe('Tianshu AI REST client', () => {
     expect(calls).toHaveLength(2)
     expect(calls.map(([, init]) => (init?.headers as Headers).get('Idempotency-Key')))
       .toEqual(['publish_order_0001', 'publish_order_0001'])
-    expect(calls[0][0]).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/publications')
+    expect(calls[0][0]).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/publications')
   })
 
   it('rolls back using the selected version and an idempotency key', async () => {
@@ -204,7 +201,7 @@ describe('Tianshu AI REST client', () => {
     await rollbackAiPublication('810001', 'rollback_order_0001', command)
 
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/rollbacks')
+    expect(url).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/rollbacks')
     expect((init?.headers as Headers).get('Idempotency-Key')).toBe('rollback_order_0001')
     expect(JSON.parse(String(init?.body))).toEqual(command)
   })
@@ -222,7 +219,7 @@ describe('Tianshu AI REST client', () => {
     await promoteAiVersion('810001', 'promote_order_0001', command)
 
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/promotions')
+    expect(url).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/promotions')
     expect((init?.headers as Headers).get('Idempotency-Key')).toBe('promote_order_0001')
     expect(JSON.parse(String(init?.body))).toEqual(command)
     expect(JSON.parse(String(init?.body))).toHaveProperty('expectedTargetRevision', null)
@@ -234,7 +231,7 @@ describe('Tianshu AI REST client', () => {
     await pageAiPublications('810001', {requestId: 'publish_order_0001', pageNo: 1, pageSize: 20})
 
     const requestUrl = new URL(String(vi.mocked(fetch).mock.calls[0][0]), 'https://tianshu.example')
-    expect(requestUrl.pathname).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/publications')
+    expect(requestUrl.pathname).toBe('/api/v1/tianshu/ai/resources/810001/publications')
     expect(requestUrl.searchParams.get('requestId')).toBe('publish_order_0001')
   })
 
@@ -260,8 +257,8 @@ describe('Tianshu AI REST client', () => {
 
     const [getUrl] = vi.mocked(fetch).mock.calls[0]
     const [putUrl, putInit] = vi.mocked(fetch).mock.calls[1]
-    expect(getUrl).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/optimization-policy')
-    expect(putUrl).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/optimization-policy')
+    expect(getUrl).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/optimization-policy')
+    expect(putUrl).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/optimization-policy')
     expect(putInit?.method).toBe('PUT')
     expect(JSON.parse(String(putInit?.body))).toMatchObject({expectedRevision: '0', evaluationWindow: 'PT24H'})
     expect(() => replaceAiOptimizationPolicy('810001', {
@@ -284,12 +281,12 @@ describe('Tianshu AI REST client', () => {
     await pageAiUsageFeedback('810001', {versionNo: '3', outcome: 'FAILURE', scoreSource: 'JUDGE', maxScore: 60})
 
     const calls = vi.mocked(fetch).mock.calls
-    expect(calls[0][0]).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/optimization-runs')
+    expect(calls[0][0]).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/optimization-runs')
     expect(calls[0][1]?.method).toBe('POST')
     expect(new Headers(calls[0][1]?.headers).get('Idempotency-Key')).toBe('opt_request_000001')
-    expect(calls[1][0]).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/optimization-runs?state=FAILED&pageNo=2&pageSize=10')
-    expect(calls[2][0]).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/optimization-runs/88')
-    expect(calls[3][0]).toBe('/apps/edge-tianshu/api/v1/tianshu/ai/resources/810001/usage-feedback?versionNo=3&outcome=FAILURE'
+    expect(calls[1][0]).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/optimization-runs?state=FAILED&pageNo=2&pageSize=10')
+    expect(calls[2][0]).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/optimization-runs/88')
+    expect(calls[3][0]).toBe('https://tianshu.example.invalid/api/v1/tianshu/ai/resources/810001/usage-feedback?versionNo=3&outcome=FAILURE'
       + '&scoreSource=JUDGE&maxScore=60&pageNo=1&pageSize=20')
     expect(() => triggerAiOptimizationRun('810001', 'short', {note: ''})).toThrow('requestId')
   })

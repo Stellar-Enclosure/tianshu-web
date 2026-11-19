@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {useState} from 'react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
@@ -48,7 +46,6 @@ describe('core page language bundles', () => {
   beforeEach(() => {
     language.locale = 'en-US'
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -83,7 +80,7 @@ describe('core page language bundles', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     const update = vi.mocked(fetch).mock.calls.find(([input, init]) =>
-      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
+      String(input) === 'https://tianshu.example.invalid/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
     expect(JSON.parse(String(update?.[1]?.body))).toEqual({
       content: 'feature:\n  enabled: false\n', changeReason: 'Keep this user text', currentVersion: 3,
     })

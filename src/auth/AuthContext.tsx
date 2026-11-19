@@ -1,6 +1,6 @@
 import {createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react'
 import {useQueryClient} from '@tanstack/react-query'
-import type {GatewayIdentityResult} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import type {PublicOAuthIdentity} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {isPermissionSnapshot, snapshotContext, type PermissionSnapshot, type PermissionSnapshotContext} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {usePermission} from '@stellar-enclosure/stellar-enclosure-web-shared/react-permissions'
 import {resources} from '../permissions/resources'
@@ -22,7 +22,7 @@ type UnsavedChangesGuard = () => Promise<boolean>
 export {gatewayAuth}
 
 export type TianshuAuthorization = {
-  readonly identity: GatewayIdentityResult
+  readonly identity: PublicOAuthIdentity
   readonly snapshot: PermissionSnapshot
   readonly binding: PermissionSnapshotContext
 }
@@ -36,8 +36,9 @@ type AuthContextValue = {
   loading: boolean
   error?: Error
   registerUnsavedChangesGuard: (guard: UnsavedChangesGuard) => () => void
-  login: () => Promise<void>
-  logout: () => Promise<void>
+  standaloneUrl?: string
+  login: (returnTo?: string) => Promise<void>
+  logout: (sso?: boolean) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -50,6 +51,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
   const [error, setError] = useState<Error>()
   const unsavedChangesGuards = useRef(new Set<UnsavedChangesGuard>())
   const sessionTransitionPending = useRef(false)
+  const pendingLogin = useRef<AbortController | null>(null)
   const identity = authorization?.identity.subject ?? ''
   const tenantId = authorization?.identity.tenantId ?? ''
   const permission = usePermission(authorization?.snapshot ?? null, authorization?.binding ?? null)
@@ -91,9 +93,9 @@ export function AuthProvider({children}: {children: ReactNode}) {
     return generation
   }, [queryClient])
 
-  const loadBootstrap = useCallback(async (generation: number): Promise<void> => {
-    const identity = await gatewayAuth.identity()
-    if (!isCurrentDdcSession(generation)) return
+  const loadBootstrap = useCallback(async (generation: number, verified?: PublicOAuthIdentity): Promise<void> => {
+    const identity = verified ?? await gatewayAuth.identity()
+    if (!identity || !isCurrentDdcSession(generation)) return
     const captured = gatewayAuth.context.capture()
     const snapshot = await gatewayAuth.bootstrap<unknown>('/api/v1/authorization/effective-permissions', captured.signal)
     captured.assertCurrent()
@@ -125,38 +127,36 @@ export function AuthProvider({children}: {children: ReactNode}) {
     }).finally(() => { if (isCurrentDdcSession(generation)) setLoading(false) })
   }, [beginSession, loadBootstrap])
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (returnTo = '/') => {
     await runSessionTransition(async () => {
       const generation = beginSession()
+      const controller = new AbortController()
+      pendingLogin.current = controller
       setError(undefined)
       setLoading(true)
       try {
-        gatewayAuth.login()
-      } catch (failure) {
-        if (isCurrentDdcSession(generation)) {
-          setAuthorization(undefined)
-          setError(failure instanceof Error ? failure : new AdminMessageError('auth.loginFailed'))
+        const identity = await gatewayAuth.login(returnTo, controller.signal)
+        if (identity && !controller.signal.aborted) await loadBootstrap(generation, identity)
+      } catch {
+        if (!controller.signal.aborted && isCurrentDdcSession(generation)) {
+          setError(new AdminMessageError('auth.loginFailed'))
         }
       } finally {
-        if (isCurrentDdcSession(generation)) setLoading(false)
+        if (pendingLogin.current === controller) pendingLogin.current = null
+        if (!controller.signal.aborted && isCurrentDdcSession(generation)) setLoading(false)
       }
     })
-  }, [beginSession, runSessionTransition])
+  }, [beginSession, loadBootstrap, runSessionTransition])
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (sso = false) => {
     await runSessionTransition(async () => {
       const generation = beginSession()
       setError(undefined)
       setLoading(true)
       try {
-        const result = await gatewayAuth.logout()
-        if (isCurrentDdcSession(generation) && result.remoteState !== 'CONFIRMED') {
-          setError(new AdminMessageError('auth.remoteLogoutPending'))
-        }
-      } catch (failure) {
-        if (isCurrentDdcSession(generation)) {
-          setError(failure instanceof Error ? failure : new AdminMessageError('auth.logoutFailed'))
-        }
+        await gatewayAuth.logout(sso)
+      } catch {
+        if (isCurrentDdcSession(generation)) setError(new AdminMessageError('auth.logoutFailed'))
       } finally {
         if (isCurrentDdcSession(generation)) setLoading(false)
       }
@@ -173,23 +173,24 @@ export function AuthProvider({children}: {children: ReactNode}) {
   }, [clearAuthorization, refreshAfterTenantMismatch])
 
   useEffect(() => {
-    const generation = beginSession()
     let active = true
-    setLoading(true)
-    void loadBootstrap(generation)
-      .catch(() => {
-        if (active && isCurrentDdcSession(generation)) setAuthorization(undefined)
-      })
-      .finally(() => {
-        if (active && isCurrentDdcSession(generation)) setLoading(false)
-      })
+    queueMicrotask(() => {
+      if (!active) return
+      const generation = beginSession()
+      setLoading(true)
+      void loadBootstrap(generation)
+        .catch(() => {
+          if (active && isCurrentDdcSession(generation)) setError(new AdminMessageError('auth.loginFailed'))
+        })
+        .finally(() => {
+          if (active && isCurrentDdcSession(generation)) setLoading(false)
+        })
+    })
     return () => {
       active = false
-      if (isCurrentDdcSession(generation)) {
-        beginDdcSession()
-        setDdcExpectedTenantId(undefined)
-        void cancelAndClearDdcQueryClient(queryClient)
-      }
+      pendingLogin.current?.abort()
+      beginDdcSession()
+      void cancelAndClearDdcQueryClient(queryClient)
     }
   }, [beginSession, loadBootstrap, queryClient])
 
@@ -204,7 +205,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
 
   const value = useMemo(
     () => ({authorization, identity, tenantId, sessionGeneration, authorized, loading, error,
-      registerUnsavedChangesGuard, login, logout}),
+      registerUnsavedChangesGuard, login, logout, standaloneUrl: gatewayAuth.standaloneUrl()}),
     [authorization, authorized, error, identity, loading, login, logout, registerUnsavedChangesGuard,
       sessionGeneration, tenantId],
   )

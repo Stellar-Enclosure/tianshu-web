@@ -53,7 +53,7 @@ describe('useScopeOption', () => {
     ]))
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch).toHaveBeenCalledWith(
-      '/apps/edge-tianshu/api/v1/tianshu/bizs',
+      'https://tianshu.example.invalid/api/v1/tianshu/bizs',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(scopeOptionKey('/api/v1/tianshu/bizs'))

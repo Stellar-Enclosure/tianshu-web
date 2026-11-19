@@ -1,3 +1,4 @@
+import {createHttpClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {gatewayAuth} from '../auth/gatewayAuth'
 import {ddcApi, ddcMutationApi, requireDdcExpectedTenantId, requireDdcPermissionContext} from './client'
 import type {DdcI18nBundle, DdcI18nScope} from './i18n'
@@ -29,10 +30,10 @@ export const initializeAdminI18n = (): Promise<{created: number; skipped: number
 }
 
 export const getPublicI18nBundle = async (locale: string, signal?: AbortSignal): Promise<Pick<DdcI18nBundle, 'pageCode' | 'locale' | 'defaultLocale' | 'version' | 'messages'>> => {
-  const response = await fetch(`${gatewayAuth.applicationBaseUrl}${path}/public/bundle?${new URLSearchParams({locale})}`, {
-    credentials: 'omit', signal,
-  })
-  const envelope = await response.json()
-  if (!response.ok || envelope.success !== true || !envelope.data) throw new Error('TIANSHU_UI_I18N_UNAVAILABLE')
-  return envelope.data as DdcI18nBundle
+  const transport = createHttpClient({baseUrl: gatewayAuth.apiBaseUrl(), anonymous: true,
+    fetch: (...args) => globalThis.fetch(...args)})
+  const envelope = await transport.request<{success: boolean; data?: DdcI18nBundle}>(
+    `${path}/public/bundle?${new URLSearchParams({locale})}`, {signal})
+  if (envelope?.success !== true || !envelope.data) throw new Error('TIANSHU_UI_I18N_UNAVAILABLE')
+  return envelope.data
 }

@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -38,7 +36,6 @@ const config: DdcConfig = {
 describe('ConfigEditorDialog', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -72,13 +69,40 @@ describe('ConfigEditorDialog', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     const create = vi.mocked(fetch).mock.calls.find(([input, init]) =>
-      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs' && init?.method === 'POST')
+      String(input) === 'https://tianshu.example.invalid/api/v1/tianshu/configs' && init?.method === 'POST')
     expect(create).toBeDefined()
     expect(JSON.parse(String(create?.[1]?.body))).toEqual({
       bizCode: 'pay', namespaceCode: 'default', env: 'dev', appCode: 'orders',
       resourceName: 'application.yml', content: 'feature:\n  enabled: false\n', format: 'YAML',
       description: '支付业务配置',
     })
+  })
+
+  it('shows server-classified deleted keys and Secret references without saving or publishing', async () => {
+    const onSaved = vi.fn()
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(record({
+      publishedRevision: '2', rolloutRequired: true,
+      changes: [{key: 'feature.removed', mode: 'HOT', change: 'REMOVED'}],
+      secretReferences: [{key: 'db.password', name: 'database-credentials', version: '8'}],
+      targets: [{bindingId: 'orders-app', clusterId: 'dev-1', namespace: 'apps', workloadName: 'orders'}],
+    })))
+    renderWithQueryClient(<ConfigEditorDialog open config={config}
+      defaultScope={{bizCode: '', namespaceCode: '', env: '', appCode: ''}}
+      onClose={() => {}} onSaved={onSaved} />)
+    const editor = await screen.findByLabelText('YAML 内容')
+    await waitFor(() => expect(editor).toHaveValue(config.content))
+    fireEvent.click(screen.getByRole('button', {name: /预\s*览\s*发\s*布/}))
+    expect(await screen.findByText('feature.removed')).toBeInTheDocument()
+    expect(screen.getByText('db.password / database-credentials / 8')).toBeInTheDocument()
+    expect(screen.getByText('dev-1 / apps / orders')).toBeInTheDocument()
+    const [url, request] = vi.mocked(fetch).mock.calls[0]
+    expect(new URL(String(url)).pathname).toBe('/api/v1/tianshu/configs/preview')
+    expect(request).toMatchObject({method: 'POST', credentials: 'omit'})
+    expect(JSON.parse(String(request?.body))).toMatchObject({configId: 'cfg-1', expectedVersion: 3, content: config.content})
+    fireEvent.change(editor, {target: {value: 'feature: {}'}})
+    await waitFor(() => expect(screen.queryByText('feature.removed')).toBeNull())
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('updates YAML with the optimistic current version', async () => {
@@ -103,7 +127,7 @@ describe('ConfigEditorDialog', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     const update = vi.mocked(fetch).mock.calls.find(([input, init]) =>
-      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
+      String(input) === 'https://tianshu.example.invalid/api/v1/tianshu/configs/cfg-1' && init?.method === 'PUT')
     expect(JSON.parse(String(update?.[1]?.body))).toEqual({
       content: 'feature:\n  enabled: false\n',
       changeReason: '关闭功能',

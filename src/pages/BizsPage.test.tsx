@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -42,7 +40,6 @@ const jsonResponse = (body: unknown) => new Response(
 describe('BizsPage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -68,7 +65,8 @@ describe('BizsPage', () => {
   it('aborts an obsolete filtered query and renders the latest result', async () => {
     let staleSignal: AbortSignal | undefined
     vi.mocked(fetch).mockImplementation((input, init) => {
-      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+      const endpoint = new URL(String(input))
+      const url = endpoint.pathname + endpoint.search
       if (url.includes('keyword=first')) {
         staleSignal = init?.signal ?? undefined
         return new Promise((_resolve, reject) => {

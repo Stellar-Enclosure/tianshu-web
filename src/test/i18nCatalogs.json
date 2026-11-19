@@ -280,7 +280,8 @@
       "antd.ColorPicker.singleColor": "单色",
       "antd.ColorPicker.gradientColor": "渐变色",
       "error.csrf": "无法验证请求，请刷新登录状态后重试",
-      "nav.resourceMetadata": "资源权限目录"
+      "nav.resourceMetadata": "资源权限目录",
+      "shell.ssoLogout": "统一退出（SSO）"
     },
     "en-US": {
       "common.save": "Save",
@@ -562,7 +563,8 @@
       "antd.DatePicker.lang.cellDateFormat": "D",
       "antd.Calendar.lang.cellDateFormat": "D",
       "error.csrf": "The request could not be verified. Refresh your session and try again.",
-      "nav.resourceMetadata": "Resource catalog"
+      "nav.resourceMetadata": "Resource catalog",
+      "shell.ssoLogout": "Sign out of SSO"
     }
   },
   "tianshu.ai.editor": {
@@ -1287,7 +1289,12 @@
       "error.cancelled": "请求已取消",
       "error.unknown": "未知错误",
       "error.partial": "部分数据加载失败：{{message}}",
-      "error.csrf": "无法验证请求，请刷新登录状态后重试"
+      "error.csrf": "无法验证请求，请刷新登录状态后重试",
+      "auth.openStandalone": "独立打开",
+      "auth.callbackPending": "正在验证授权",
+      "auth.callbackDone": "授权已返回",
+      "auth.callbackFailed": "登录失败",
+      "auth.callbackBack": "返回控制台"
     },
     "en-US": {
       "auth.title": "Tianshu administration",
@@ -1316,7 +1323,12 @@
       "error.cancelled": "Request cancelled",
       "error.unknown": "Unknown error",
       "error.partial": "Some data could not be loaded: {{message}}",
-      "error.csrf": "The request could not be verified. Refresh your session and try again."
+      "error.csrf": "The request could not be verified. Refresh your session and try again.",
+      "auth.openStandalone": "Open standalone",
+      "auth.callbackPending": "Verifying authorization",
+      "auth.callbackDone": "Authorization returned",
+      "auth.callbackFailed": "Sign-in failed",
+      "auth.callbackBack": "Back to console"
     }
   },
   "tianshu.bindings": {
@@ -1477,7 +1489,22 @@
       "changeType.CREATE": "新建",
       "changeType.UPDATE": "更新",
       "changeType.DELETE": "删除",
-      "changeType.ROLLBACK": "回滚"
+      "changeType.ROLLBACK": "回滚",
+      "preview.action": "预览发布",
+      "preview.title": "配置发布预览",
+      "preview.rollout": "本次变更需要重新部署工作负载。",
+      "preview.noRollout": "本次变更无需重新部署工作负载。",
+      "preview.unknown": "未知或无权读取",
+      "preview.baseline": "对比的已发布版本",
+      "preview.noBaseline": "尚未发布",
+      "preview.changes": "配置键变更",
+      "preview.secretReferences": "Secret 引用",
+      "preview.targets": "受影响的工作负载",
+      "preview.none": "无",
+      "preview.added": "新增",
+      "preview.removed": "删除",
+      "preview.updated": "变更",
+      "preview.ruleChanged": "规则变更"
     },
     "en-US": {
       "feedback.deleted": "Configuration deleted",
@@ -1524,7 +1551,22 @@
       "changeType.CREATE": "Created",
       "changeType.UPDATE": "Updated",
       "changeType.DELETE": "Deleted",
-      "changeType.ROLLBACK": "Rolled back"
+      "changeType.ROLLBACK": "Rolled back",
+      "preview.action": "Preview publication",
+      "preview.title": "Configuration publication preview",
+      "preview.rollout": "This change requires a workload rollout.",
+      "preview.noRollout": "This change requires no workload rollout.",
+      "preview.unknown": "Unknown or unavailable",
+      "preview.baseline": "Published baseline",
+      "preview.noBaseline": "Unpublished",
+      "preview.changes": "Configuration key changes",
+      "preview.secretReferences": "Secret references",
+      "preview.targets": "Affected workloads",
+      "preview.none": "None",
+      "preview.added": "Added",
+      "preview.removed": "Removed",
+      "preview.updated": "Updated",
+      "preview.ruleChanged": "Rule changed"
     }
   },
   "tianshu.envs": {
@@ -1950,7 +1992,23 @@
       "publishMode.ASYNC": "异步",
       "publishMode.STRONG_ALL_ACK": "强一致全部确认",
       "publishMode.STRONG_QUORUM_ACK": "强一致多数确认",
-      "publishMode.SYNC_ALL_ACK": "同步全部确认"
+      "publishMode.SYNC_ALL_ACK": "同步全部确认",
+      "evidence.title": "当前配置实绩",
+      "evidence.target": "目标版本",
+      "evidence.platform": "平台应用",
+      "evidence.rollout": "工作负载滚动",
+      "evidence.process": "进程回执",
+      "evidence.counts": "期望 / 当前 / 已生效 / 失败 / 等待",
+      "evidence.observed": "观测时间",
+      "evidence.unknown": "未知",
+      "evidence.expired": "观测已过期",
+      "evidence.history": "历史任务",
+      "evidence.waiting": "已发布，等待副本",
+      "evidence.partial": "部分失败",
+      "evidence.receipt": "最后回执时间",
+      "evidence.applied": "生效版本",
+      "evidence.pod": "Pod / 容器",
+      "evidence.state": "状态"
     },
     "en-US": {
       "fields.changeId": "Change ID",
@@ -1990,7 +2048,23 @@
       "publishMode.ASYNC": "Asynchronous",
       "publishMode.STRONG_ALL_ACK": "Strong consistency, all acknowledgments",
       "publishMode.STRONG_QUORUM_ACK": "Strong consistency, quorum acknowledgments",
-      "publishMode.SYNC_ALL_ACK": "Synchronous, all acknowledgments"
+      "publishMode.SYNC_ALL_ACK": "Synchronous, all acknowledgments",
+      "evidence.title": "Current configuration delivery",
+      "evidence.target": "Target revision",
+      "evidence.platform": "Platform apply",
+      "evidence.rollout": "Workload rollout",
+      "evidence.process": "Process receipts",
+      "evidence.counts": "Desired / current / applied / failed / waiting",
+      "evidence.observed": "Observed at",
+      "evidence.unknown": "Unknown",
+      "evidence.expired": "Observation expired",
+      "evidence.history": "Historical task",
+      "evidence.waiting": "Published, waiting for replicas",
+      "evidence.partial": "Partial failure",
+      "evidence.receipt": "Last receipt",
+      "evidence.applied": "Applied revision",
+      "evidence.pod": "Pod / container",
+      "evidence.state": "State"
     }
   },
   "tianshu.registry": {
@@ -2013,7 +2087,20 @@
       "instances.title": "{{name}} 实例",
       "status.ONLINE": "在线",
       "status.OFFLINE": "离线",
-      "status.UNKNOWN": "未知"
+      "status.UNKNOWN": "未知",
+      "observation.source": "Kubernetes Service 与 EndpointSlice",
+      "observation.ready": "就绪",
+      "observation.serving": "提供服务",
+      "observation.terminating": "终止中",
+      "observation.yes": "是",
+      "observation.no": "否",
+      "observation.stale": "观测已过期",
+      "observation.condition": "端点条件",
+      "observation.port": "目标端口",
+      "observation.observed": "观测时间",
+      "observation.validUntil": "有效至",
+      "observation.unavailable": "当前 Kubernetes 观测未知",
+      "observation.denied": "无权读取 Kubernetes 观测"
     },
     "en-US": {
       "fields.scope": "Business domain / Environment / Application",
@@ -2034,7 +2121,20 @@
       "instances.title": "{{name}} instances",
       "status.ONLINE": "Online",
       "status.OFFLINE": "Offline",
-      "status.UNKNOWN": "Unknown"
+      "status.UNKNOWN": "Unknown",
+      "observation.source": "Kubernetes Services and EndpointSlices",
+      "observation.ready": "Ready",
+      "observation.serving": "Serving",
+      "observation.terminating": "Terminating",
+      "observation.yes": "Yes",
+      "observation.no": "No",
+      "observation.stale": "Observation expired",
+      "observation.condition": "Condition",
+      "observation.port": "Target port",
+      "observation.observed": "Observed at",
+      "observation.validUntil": "Valid until",
+      "observation.unavailable": "Current Kubernetes observation is unavailable",
+      "observation.denied": "You do not have permission to read Kubernetes observations"
     }
   },
   "tianshu.metadata": {
@@ -2149,7 +2249,10 @@
       "si.references.inboundTitle": "引用本资源的上游对象",
       "si.references.sourceCol": "源对象",
       "si.references.targetCol": "目标对象",
-      "si.references.requiredCol": "是否强依赖"
+      "si.references.requiredCol": "是否强依赖",
+      "si.editor.draftFingerprint": "草稿能力指纹",
+      "si.editor.publishedFingerprint": "已发布能力指纹",
+      "si.editor.fingerprintChanged": "能力指纹已变化。"
     },
     "en-US": {
       "si.catalog.title": "SI Resource Catalog",
@@ -2228,7 +2331,10 @@
       "si.references.inboundTitle": "Inbound Consumers",
       "si.references.sourceCol": "Source",
       "si.references.targetCol": "Target",
-      "si.references.requiredCol": "Required"
+      "si.references.requiredCol": "Required",
+      "si.editor.draftFingerprint": "Draft capability fingerprint",
+      "si.editor.publishedFingerprint": "Published capability fingerprint",
+      "si.editor.fingerprintChanged": "The capability fingerprint changed."
     }
   }
 }

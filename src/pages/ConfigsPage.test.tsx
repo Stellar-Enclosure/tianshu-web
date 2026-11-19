@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor, within} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -69,7 +67,8 @@ const versionRow = {
 
 const mockConfigEndpoints = (): void => {
   vi.mocked(fetch).mockImplementation((input, init) => {
-    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+    const endpoint = new URL(String(input))
+    const url = endpoint.pathname + endpoint.search
     if (url.includes('/configs/cfg-1/versions/page')) {
       return Promise.resolve(jsonResponse(pageRecord([versionRow], 11)))
     }
@@ -98,7 +97,6 @@ const clickLastButton = (name: RegExp): void => {
 describe('ConfigsPage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -160,11 +158,11 @@ describe('ConfigsPage', () => {
       .not.toHaveLength(0)
     expect(within(screen.getAllByRole('dialog').at(-1)!).getByText('作用域：pay-biz / dev / orders')).toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls.some(([input, init]) =>
-      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs/cfg-1'
+      String(input) === 'https://tianshu.example.invalid/api/v1/tianshu/configs/cfg-1'
       && init?.method === 'DELETE')).toBe(false)
     clickLastButton(/删\s*除/)
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input, init]) =>
-      String(input) === '/apps/edge-tianshu/api/v1/tianshu/configs/cfg-1'
+      String(input) === 'https://tianshu.example.invalid/api/v1/tianshu/configs/cfg-1'
       && init?.method === 'DELETE')).toBe(true))
 
     fireEvent.click(screen.getByRole('button', { name: /更\s*多\s*操\s*作/ }))

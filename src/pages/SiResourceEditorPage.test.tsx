@@ -10,6 +10,7 @@ import SiResourceEditorPage from './SiResourceEditorPage'
 
 const siApi = vi.hoisted(() => ({
   getSiResource: vi.fn(),
+  getSiResourceVersion: vi.fn(),
   createSiResource: vi.fn(),
   replaceSiDraft: vi.fn(),
   publishSiDraft: vi.fn(),
@@ -20,6 +21,7 @@ const siApi = vi.hoisted(() => ({
   ddcSiQueryKeys: {
     all: () => ['tianshu', '1001', 'si'],
     detail: (id: string | number) => ['tianshu', '1001', 'si', 'detail', String(id)],
+    version: (id: string | number, version: string | number) => ['tianshu', '1001', 'si', 'version', String(id), String(version)],
     versions: (id: string | number) => ['tianshu', '1001', 'si', 'versions', String(id)],
     references: (id: string | number, dir: string) => ['tianshu', '1001', 'si', 'references', String(id), dir],
   },
@@ -82,6 +84,41 @@ describe('SiResourceEditorPage', () => {
   afterEach(() => {
     cleanup()
     setDdcExpectedTenantId(undefined)
+  })
+
+  it('round-trips a versioned MCP definition when only its description changes', async () => {
+    const spec = {
+      schemaVersion: 'mcp-server-v2',
+      sourceType: 'STDIO_ARTIFACT',
+      protocolVersion: '2025-11-25',
+      transport: 'STDIO',
+      command: '/app/weather',
+      args: ['--format', 'json'],
+      credentialRef: 'vault://si/weather',
+      capabilityFingerprint: 'a'.repeat(64),
+      artifact: { reference: 'oci://registry.example.test/mcp/weather', digestSha256: 'b'.repeat(64) },
+      tools: [{
+        toolId: 'weather.lookup', name: 'lookup', description: 'Look up weather',
+        inputSchema: { type: 'object' }, outputSchema: { type: 'object', properties: { temperature: { type: 'number' } } },
+        requiredPermissions: ['weather:forecast:read'], riskLevel: 'LOW', idempotent: true, enabled: false,
+      }],
+    }
+    const archived = { ...existingMcp, specJson: JSON.stringify(spec) }
+    let persisted = archived
+    siApi.getSiResource.mockImplementation(async () => persisted)
+    siApi.replaceSiDraft.mockImplementation(async (_, change) => {
+      persisted = { ...archived, ...change, version: 3 }
+      return persisted
+    })
+    const editor = renderEditor('/si/resources/910002')
+    fireEvent.change(await screen.findByDisplayValue(archived.description!), { target: { value: 'Updated description' } })
+    fireEvent.click(screen.getByTestId('si-save-draft-btn'))
+    await waitFor(() => expect(siApi.replaceSiDraft).toHaveBeenCalledWith('910002',
+      expect.objectContaining({ expectedVersion: 2, description: 'Updated description' })))
+    expect(JSON.parse(persisted.specJson!)).toEqual(spec)
+    editor.unmount()
+    renderEditor('/si/resources/910002')
+    expect(await screen.findByDisplayValue('Updated description')).toBeInTheDocument()
   })
 
   it('switches MCP transport fields dynamically, guards plaintext secret leaks, sends expectedVersion and preserves edits on 409 conflict', async () => {

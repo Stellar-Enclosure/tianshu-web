@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -13,8 +14,8 @@ import {
   Typography,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { useState } from 'react'
-import { ddcPageApi } from '../api/client'
+import { useEffect, useState } from 'react'
+import { DdcApiError, ddcPageApi } from '../api/client'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { RegistryInstance, RegistryService } from '../api/types'
@@ -26,9 +27,26 @@ import { emptyScope } from '../lib/scopeDefaults'
 
 export default function RegistryPage() {
   const { t, locale } = usePageMessages('tianshu.registry')
-  const instanceStatusLabel = (status?: string): string => {
-    const value = status || 'UNKNOWN'
-    return ['ONLINE', 'OFFLINE', 'UNKNOWN'].includes(value) ? t(`status.${value}`) : value
+  const label = {
+    source: t('observation.source'),
+    ready: t('observation.ready'),
+    serving: t('observation.serving'),
+    terminating: t('observation.terminating'),
+    yes: t('observation.yes'),
+    no: t('observation.no'),
+    stale: t('observation.stale'),
+    condition: t('observation.condition'),
+    port: t('observation.port'),
+    observed: t('observation.observed'),
+    validUntil: t('observation.validUntil'),
+    unavailable: t('observation.unavailable'),
+    denied: t('observation.denied'),
+  }
+  const status = (value?: string) => value === 'true' ? label.yes : value === 'false' ? label.no : t('status.UNKNOWN')
+  const observationError = (error: Error | null) => {
+    if (error instanceof DdcApiError && error.status === 403) return new Error(label.denied)
+    if (error instanceof DdcApiError && error.status === 503) return new Error(label.unavailable)
+    return error
   }
   const screens = Grid.useBreakpoint()
   const servicePage = usePageState()
@@ -39,6 +57,7 @@ export default function RegistryPage() {
   }))
   const [selectedService, setSelectedService] =
     useState<RegistryService | null>(null)
+  const [lastExpiry, setLastExpiry] = useState(() => Date.now())
 
   const servicesQuery = useQuery({
     queryKey: ['tianshu', 'registry-services', submitted, servicePage.page],
@@ -70,6 +89,7 @@ export default function RegistryPage() {
         serviceKind: selectedService!.serviceKind,
         protocol: selectedService!.protocol,
         serviceName: selectedService!.serviceName,
+        bindingId: selectedService!.serviceId,
         group: selectedService!.group,
         version: selectedService!.version,
         pageNo: instancePage.page.pageNo,
@@ -77,9 +97,21 @@ export default function RegistryPage() {
       })}`,
       { signal },
     ),
-    placeholderData: keepPreviousData,
     staleTime: 0,
   })
+
+  const endpointRows = instancesQuery.data?.records
+  const clock = Math.max(lastExpiry, instancesQuery.dataUpdatedAt)
+  const expiry = Math.min(...(endpointRows ?? []).map(row => Date.parse(row.metadata?.validUntil ?? '')))
+  const currentRows = (endpointRows ?? []).filter(row => row.metadata?.observationSource === 'KUBERNETES'
+    && row.metadata.bindingId === selectedService?.serviceId && !!row.metadata.podUid
+    && Date.parse(row.metadata.validUntil ?? '') > clock)
+  const invalidEvidence = !!endpointRows?.length && currentRows.length !== endpointRows.length
+  useEffect(() => {
+    if (!Number.isFinite(expiry) || expiry <= clock) return
+    const timer = window.setTimeout(() => setLastExpiry(Date.now()), Math.min(2_147_483_647, Math.max(0, expiry - Date.now())))
+    return () => window.clearTimeout(timer)
+  }, [clock, expiry])
 
   const applyFilter = () => {
     setSubmitted({ ...draft })
@@ -94,6 +126,7 @@ export default function RegistryPage() {
 
   const openInstances = (service: RegistryService) => {
     instancePage.resetPage()
+    setLastExpiry(Date.now())
     setSelectedService(service)
   }
 
@@ -152,53 +185,22 @@ export default function RegistryPage() {
   ]
 
   const instanceColumns: TableColumnsType<RegistryInstance> = [
-    {
-      title: t('common.status'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'ONLINE' ? 'green' : 'default'}>
-          {instanceStatusLabel(status)}
-        </Tag>
-      ),
-    },
-    {
-      title: t('fields.instanceId'),
-      dataIndex: 'instanceId',
-      key: 'instanceId',
-      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
-    },
-    {
-      title: t('fields.address'),
-      key: 'address',
-      render: (_: unknown, row) => (
-        <Typography.Text code>
-          {`${row.secure ? 'tls://' : ''}${row.host}:${row.port}`}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: t('fields.lastHeartbeatAt'),
-      dataIndex: 'lastHeartbeatAt',
-      key: 'lastHeartbeatAt',
-      render: (value?: string) => formatTime(value, locale),
-    },
-    {
-      title: t('fields.expireAt'),
-      dataIndex: 'expireAt',
-      key: 'expireAt',
-      render: (value?: string) => formatTime(value, locale),
-    },
+    {title: 'Pod', key: 'pod', render: (_, row) => <Typography.Text code>{row.metadata?.podName ?? '—'}</Typography.Text>},
+    {title: label.port, dataIndex: 'port', key: 'port'},
+    {title: label.condition, key: 'condition', render: (_, row) => <Space wrap>
+      <Tag color={row.metadata?.ready === 'true' ? 'green' : undefined}>{label.ready} / {status(row.metadata?.ready)}</Tag>
+      <Tag>{label.serving} / {status(row.metadata?.serving)}</Tag>
+      <Tag>{label.terminating} / {status(row.metadata?.terminating)}</Tag>
+    </Space>},
+    {title: label.observed, key: 'observed', render: (_, row) => formatTime(row.metadata?.observedAt, locale)},
+    {title: label.validUntil, key: 'expiry', render: (_, row) => formatTime(row.metadata?.validUntil, locale)},
   ]
-
-  const onlineOnPage = (instancesQuery.data?.records ?? [])
-    .filter((instance) => instance.status === 'ONLINE').length
 
   return (
     <div>
       <AdminPageHeader
         title={t('title')}
-        description={t('description')}
+        description={label.source}
       />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
@@ -212,20 +214,21 @@ export default function RegistryPage() {
           <Card size="small">
             <Statistic
               title={t('stats.services')}
-              value={servicesQuery.data?.page.total ?? 0}
+              value={servicesQuery.error ? '—' : servicesQuery.data?.page.total ?? '—'}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12}>
           <Card size="small">
-            <Statistic title={t('stats.onlineOnPage')} value={onlineOnPage} />
+            <Statistic title={label.ready} value={instancesQuery.error || invalidEvidence || !endpointRows ? '—' :
+              currentRows.filter(row => row.metadata?.ready === 'true').length} />
           </Card>
         </Col>
       </Row>
       <Card className="tianshu-admin-table-card" size="small" title={t('list.title')}>
         <PageState
           loading={servicesQuery.isPending}
-          error={servicesQuery.error}
+          error={observationError(servicesQuery.error)}
           empty={(servicesQuery.data?.records.length ?? 0) === 0}
           onRetry={() => { void servicesQuery.refetch() }}
         >
@@ -258,15 +261,17 @@ export default function RegistryPage() {
       >
         <PageState
           loading={instancesQuery.isPending}
-          error={instancesQuery.error}
-          empty={(instancesQuery.data?.records.length ?? 0) === 0}
+          error={observationError(instancesQuery.error)}
+          empty={!invalidEvidence && currentRows.length === 0}
           onRetry={() => { void instancesQuery.refetch() }}
         >
+          {invalidEvidence && <Alert type="warning" showIcon
+            message={Number.isFinite(expiry) && expiry <= clock ? label.stale : label.unavailable} />}
           <Table<RegistryInstance>
             rowKey={(row) => row.instanceId}
             size="small"
             loading={instancesQuery.isFetching}
-            dataSource={instancesQuery.data?.records ?? []}
+            dataSource={invalidEvidence || instancesQuery.error ? [] : currentRows}
             columns={instanceColumns}
             scroll={{ x: 'max-content' }}
             pagination={{

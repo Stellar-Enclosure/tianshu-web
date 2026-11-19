@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -21,12 +22,12 @@ import {
   Typography,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ddcApi, ddcPageApi } from '../api/client'
 import { formatAdminError } from '../i18n/errors'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminPageState as PageState } from '../components/page/AdminPageState'
-import type { DdcPublishResult, DdcPublishTask } from '../api/types'
+import type { DdcPublishProcessEvidence, DdcPublishResult, DdcPublishTask } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
 import { usePageState } from '../hooks/usePageState'
@@ -70,6 +71,7 @@ export default function PublishTasksPage() {
     ...emptyFilter,
   })
   const [detailTask, setDetailTask] = useState<DdcPublishTask | null>(null)
+  const [lastExpiry, setLastExpiry] = useState(() => Date.now())
 
   const tasksQuery = useQuery({
     queryKey: ['tianshu', 'publish-tasks', submitted, pageState.page],
@@ -94,6 +96,7 @@ export default function PublishTasksPage() {
       `/api/v1/tianshu/publish-tasks/${encodeURIComponent(detailTask!.changeId)}`,
       { signal },
     ),
+    refetchInterval: POLL_INTERVAL_MS,
     staleTime: 0,
   })
 
@@ -141,7 +144,7 @@ export default function PublishTasksPage() {
       dataIndex: 'changeId',
       key: 'changeId',
       render: (value: string, row) => (
-        <Button type="link" size="small" onClick={() => setDetailTask(row)}>
+        <Button type="link" size="small" onClick={() => { setLastExpiry(Date.now()); setDetailTask(row) }}>
           <Typography.Text code>{value}</Typography.Text>
         </Button>
       ),
@@ -198,6 +201,45 @@ export default function PublishTasksPage() {
         </PermissionButton>
       ),
     },
+  ]
+
+  const evidence = detailQuery.error ? undefined : detailQuery.data
+  const expiry = Date.parse(evidence?.observationValidUntil ?? '')
+  const clock = Math.max(lastExpiry, detailQuery.dataUpdatedAt)
+  const evidenceFresh = Number.isFinite(expiry) && expiry > clock && evidence?.historyOnly === false
+  useEffect(() => {
+    if (!evidenceFresh) return
+    const timer = window.setTimeout(() => setLastExpiry(Date.now()), Math.min(2_147_483_647, Math.max(0, expiry - Date.now())))
+    return () => window.clearTimeout(timer)
+  }, [evidenceFresh, expiry])
+  const label = {
+    title: t('evidence.title'),
+    target: t('evidence.target'),
+    platform: t('evidence.platform'),
+    rollout: t('evidence.rollout'),
+    process: t('evidence.process'),
+    counts: t('evidence.counts'),
+    observed: t('evidence.observed'),
+    unknown: t('evidence.unknown'),
+    expired: t('evidence.expired'),
+    history: t('evidence.history'),
+    waiting: t('evidence.waiting'),
+    partial: t('evidence.partial'),
+    receipt: t('evidence.receipt'),
+    applied: t('evidence.applied'),
+    pod: t('evidence.pod'),
+    state: t('evidence.state'),
+  }
+  const stateLabel = (state?: string | null) => {
+    if (state === 'PUBLISHED_WAITING_FOR_CONSUMERS') return label.waiting
+    if (state === 'PARTIAL_FAILURE' || state === 'PARTIAL') return label.partial
+    return !state || state === 'UNKNOWN' ? label.unknown : state
+  }
+  const processColumns: TableColumnsType<DdcPublishProcessEvidence> = [
+    {title: label.pod, key: 'process', render: (_, row) => [row.podName, row.containerName].filter(Boolean).join(' / ') || '—'},
+    {title: label.state, key: 'status', render: (_, row) => [stateLabel(row.status), row.errorCode].filter(Boolean).join(' · ')},
+    {title: label.applied, dataIndex: 'appliedRevision', render: value => value ?? '—'},
+    {title: label.receipt, dataIndex: 'lastReportedAt', render: value => formatTime(value, locale)},
   ]
 
   const detail = detailQuery.data ?? detailTask
@@ -318,6 +360,39 @@ export default function PublishTasksPage() {
             column={screens.md ? 2 : 1}
             items={detailItems}
           />
+          {detailQuery.error && <Alert type="warning" message={formatAdminError(detailQuery.error, t)} />}
+          {evidence && <Card size="small" title={label.title} style={{marginTop: 16}}>
+            <Descriptions size="small" column={screens.md ? 2 : 1} items={[
+              {key: 'revision', label: label.target, children: evidence.desiredRevision ?? '—'},
+              {key: 'platform', label: label.platform, children: stateLabel(evidence.platformState)},
+              {key: 'rollout', label: label.rollout, children: stateLabel(evidenceFresh ? evidence.rolloutState
+                : evidence.rolloutState === 'SUPERSEDED' ? 'SUPERSEDED' : undefined)},
+              {key: 'process', label: label.process, children: stateLabel(evidenceFresh ? evidence.processState
+                : evidence.processState === 'SUPERSEDED' ? 'SUPERSEDED' : undefined)},
+              {key: 'observed', label: label.observed, children: formatTime(evidence.observedAt, locale)},
+            ]} />
+            {evidence.historyOnly === true && <Alert type="info" message={label.history} />}
+            {Number.isFinite(expiry) && !evidenceFresh && evidence.historyOnly === false
+              && <Alert type="warning" message={label.expired} />}
+            {evidence.reasonCode && <Typography.Text type="secondary">{evidence.reasonCode}</Typography.Text>}
+            {(evidence.targets ?? []).map((target, index) => {
+              const location = [target.clusterId, target.k8sNamespace, target.targetBindingId].filter(Boolean).join(' / ')
+              return <Card key={target.targetBindingId ?? index} size="small" title={location || label.unknown} style={{marginTop: 12}}>
+                <Descriptions size="small" column={screens.md ? 2 : 1} items={[
+                  {key: 'target', label: label.target, children: target.desiredRevision ?? '—'},
+                  {key: 'platform', label: label.platform, children: stateLabel(target.platformState)},
+                  {key: 'rollout', label: label.rollout, children: stateLabel(evidenceFresh ? target.rolloutState : undefined)},
+                  {key: 'process', label: label.process, children: stateLabel(evidenceFresh ? target.processState : undefined)},
+                  {key: 'count', label: label.counts, children: evidenceFresh
+                    ? [target.desiredReplicas, target.currentCount, target.appliedCount, target.failedCount, target.waitingCount]
+                      .map(value => value ?? '—').join(' / ') : '—'},
+                ]} />
+                {evidenceFresh && !!target.currentProcesses?.length && <Table size="small" pagination={false}
+                  rowKey={(row) => JSON.stringify([row.podUid, row.containerName, row.containerId, row.bootId])}
+                  dataSource={target.currentProcesses} columns={processColumns} />}
+              </Card>
+            })}
+          </Card>}
         </Spin>
       </Modal>
     </div>

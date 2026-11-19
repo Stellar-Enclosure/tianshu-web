@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {act, fireEvent, screen, waitFor} from '@testing-library/react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -76,14 +74,15 @@ const task = {
   updatedAt: '2026-07-31T10:00:05Z',
 }
 
-const mockEndpoints = (): void => {
+const mockEndpoints = (details: unknown = task): void => {
   vi.mocked(fetch).mockImplementation((input, init) => {
-    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+    const endpoint = new URL(String(input))
+    const url = endpoint.pathname + endpoint.search
     if (url.includes('/publish-tasks/page')) {
       return Promise.resolve(jsonResponse(pageRecord()))
     }
     if (url.endsWith('/publish-tasks/change-9')) {
-      return Promise.resolve(jsonResponse(record(task)))
+      return Promise.resolve(jsonResponse(record(details)))
     }
     if (url.includes('/retry') && init?.method === 'POST') {
       return Promise.resolve(jsonResponse(record({
@@ -102,7 +101,6 @@ const mockEndpoints = (): void => {
 describe('PublishTasksPage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -138,11 +136,47 @@ describe('PublishTasksPage', () => {
       .toHaveStyle({ width: 'calc(100vw - 24px)' })
   })
 
+  it('shows a fresh process receipt separately from the historical task and hides it at expiry', async () => {
+    vi.useFakeTimers({shouldAdvanceTime: true})
+    mockEndpoints({...task, historyOnly: false, desiredRevision: '4', platformState: 'APPLIED',
+      rolloutState: 'APPLIED', processState: 'PARTIAL_FAILURE',
+      observationValidUntil: new Date(Date.now() + 3_000).toISOString(),
+      targets: [{targetBindingId: 'config-target-a', desiredRevision: '4', platformState: 'APPLIED',
+        rolloutState: 'APPLIED', processState: 'PARTIAL_FAILURE', desiredReplicas: 2, currentCount: 2,
+        appliedCount: 1, failedCount: 1, waitingCount: 0, currentProcesses: [
+          {podUid: 'pod-uid-current', podName: 'orders-new', containerName: 'app',
+            status: 'APPLIED', appliedRevision: '4', lastReportedAt: new Date().toISOString()},
+        ]}],
+    })
+    renderWithQueryClient(<PublishTasksPage />)
+    fireEvent.click(await screen.findByRole('button', {name: 'change-9'}))
+    expect(await screen.findByText('orders-new / app')).toBeInTheDocument()
+    expect(screen.getAllByText('部分失败')).toHaveLength(2)
+    expect(screen.getByText('2 / 2 / 1 / 1 / 0')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+    expect(await screen.findByText('观测已过期')).toBeInTheDocument()
+    expect(screen.queryByText('orders-new / app')).toBeNull()
+  })
+
+  it('presents published zero replicas as waiting without an invented receipt', async () => {
+    mockEndpoints({...task, historyOnly: false, desiredRevision: '4', platformState: 'APPLIED',
+      processState: 'PUBLISHED_WAITING_FOR_CONSUMERS', observationValidUntil: new Date(Date.now() + 60_000).toISOString(),
+      targets: [{targetBindingId: 'config-target-zero', desiredReplicas: 0, currentCount: 0,
+        appliedCount: 0, failedCount: 0, waitingCount: 0, currentProcesses: []}],
+    })
+    renderWithQueryClient(<PublishTasksPage />)
+    fireEvent.click(await screen.findByRole('button', {name: 'change-9'}))
+    expect(await screen.findByText('已发布，等待副本')).toBeInTheDocument()
+    expect(screen.getByText('0 / 0 / 0 / 0 / 0')).toBeInTheDocument()
+    expect(screen.queryByText('最后回执时间')).toBeNull()
+  })
+
   it('keeps the current page visible when a background poll fails', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     let pageAttempts = 0
     vi.mocked(fetch).mockImplementation((input) => {
-      const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+      const endpoint = new URL(String(input))
+      const url = endpoint.pathname + endpoint.search
       if (url.includes('/publish-tasks/page')) {
         pageAttempts += 1
         return Promise.resolve(jsonResponse(

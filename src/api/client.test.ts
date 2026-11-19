@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {
   beginDdcSession,
@@ -41,7 +39,6 @@ describe('ddcApi', () => {
     setDdcTenantMismatchHandler(() => {})
     beginDdcSession()
     setDdcExpectedTenantId('1001')
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
   afterEach(() => {
@@ -53,35 +50,41 @@ describe('ddcApi', () => {
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-  it('downloads XLSX with the verified tenant and CSRF proof', async () => {
+  it('downloads XLSX with the verified tenant and the TianShu Resource Bearer', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response('xlsx', {status: 200,
       headers: {'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}}))
     await expect(ddcDownload('/api/v1/tianshu/namespaces/export', {range: 'FILTERED'})).resolves.toBeInstanceOf(Blob)
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/namespaces/export')
+    expect(url).toBe('https://tianshu.example.invalid/api/v1/tianshu/namespaces/export')
     expect(new Headers(init?.headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
-    expect(new Headers(init?.headers).get('X-CSRF-TOKEN')).toBe('test-csrf')
-    expect(init?.credentials).toBe('include')
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer tianshu-resource-token')
+    expect(new Headers(init?.headers).get('X-CSRF-TOKEN')).toBeNull()
+    expect(init?.credentials).toBe('omit')
   })
 
-  it('does not dispatch a download after the authenticated session changes', async () => {
-    let finish!: (value: ReturnType<typeof csrfFixture>) => void
-    vi.mocked(gatewayAuth.csrf).mockImplementation(() => new Promise(resolve => {finish = resolve}))
+  it('aborts an in-flight export and rejects its late result after the tenant changes', async () => {
+    let finish!: (value: Response) => void
+    vi.mocked(fetch).mockImplementation(() => new Promise(resolve => { finish = resolve }))
     const pending = ddcDownload('/api/v1/tianshu/namespaces/export', {})
+    const request = vi.mocked(fetch).mock.calls[0]?.[1]
+    expect(request?.signal?.aborted).toBe(false)
     beginDdcSession()
-    finish(csrfFixture())
+    setDdcExpectedTenantId('2002')
+    expect(request?.signal?.aborted).toBe(true)
+    finish(new Response('xlsx', {headers: {'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}}))
     await expect(pending).rejects.toMatchObject({name: 'AbortError'})
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-    it('sends cookie credentials and returns data', async () => {
+  it('reads JSON at the deployed Resource with a Bearer and returns the response data', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(record({ list: [1] })))
     await expect(ddcApi<{ list: number[] }>('/api/v1/tianshu/apps')).resolves.toEqual({ list: [1] })
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/apps')
-        expect(init!.credentials).toBe('include')
-        expect((init!.headers as Headers).has('Authorization')).toBe(false)
-    expect((init!.headers as Headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
+    expect(url).toBe('https://tianshu.example.invalid/api/v1/tianshu/apps')
+    expect(init?.credentials).toBe('omit')
+    const headers = new Headers(init?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer tianshu-resource-token')
+    expect(headers.get('X-Egon-Tianshu-Tenant')).toBe('1001')
   })
 
   it('stringifies JSON bodies with content type', async () => {
@@ -222,14 +225,19 @@ describe('ddcApi', () => {
     expect(headers.get('X-Egon-Tianshu-Tenant')).toBe('1001')
   })
 
-  it('keeps legacy requests tenant-optional before the first verified bootstrap', async () => {
+  it('requires a verified tenant before a business request can be dispatched', async () => {
     setDdcExpectedTenantId(undefined)
-    vi.mocked(fetch).mockResolvedValue(jsonResponse(record(null)))
+    await expect(ddcApi('/api/v1/tianshu/apps')).rejects.toMatchObject({status: 401, code: 'AUTHORIZATION_REQUIRED'})
+    expect(fetch).not.toHaveBeenCalled()
+  })
 
-    await ddcApi('/api/v1/tianshu/apps')
-
-    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Headers
-    expect(headers.has('X-Egon-Tianshu-Tenant')).toBe(false)
+  it('distinguishes authority unavailability from a rejected identity and does not replay the write', async () => {
+    const unauthorized = vi.fn()
+    setDdcUnauthorizedHandler(unauthorized)
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({status: 'AUTHORITY_UNAVAILABLE'}, 503))
+    await expect(ddcApi('/api/v1/tianshu/configs', {method: 'POST', body: {}})).rejects.toMatchObject({status: 503})
+    expect(unauthorized).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('drops a response completed under an older session generation', async () => {

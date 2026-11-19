@@ -1,5 +1,5 @@
 import {snapshotContext, type PermissionSnapshot} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import type {GatewayIdentityResult} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import type {PublicOAuthIdentity} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {gatewayAuth} from '../auth/gatewayAuth'
 
 export const permissionSnapshot = (tenantId = '1001'): PermissionSnapshot => ({
@@ -10,14 +10,11 @@ export const permissionSnapshot = (tenantId = '1001'): PermissionSnapshot => ({
   permissionCodes: ['TIANSHU_READ', 'TIANSHU_WRITE', 'TIANSHU_PUBLISH', 'TIANSHU_CACHE', 'TIANSHU_AI_READ', 'TIANSHU_AI_WRITE', 'TIANSHU_AI_PUBLISH', 'TIANSHU_SI_READ', 'TIANSHU_SI_WRITE', 'TIANSHU_SI_PUBLISH', 'TIANSHU_SI_PROMOTE', 'TIANSHU_SI_ARCHIVE', 'TIANSHU_SI_BINDING_WRITE', 'TIANSHU_SI_INDEX_MANAGE'],
   snapshotExpiresAt: new Date(Date.now() + 120_000).toISOString(),
 })
-export const gatewayIdentity = (tenantId = '1001'): GatewayIdentityResult => ({
+export const gatewayIdentity = (tenantId = '1001'): PublicOAuthIdentity => ({
   issuer: `https://idp.example/tenants/${tenantId}`, subject: `subject-${tenantId}`, tenantId,
-  appAlias: 'edge-tianshu', clientId: 'tianshu-web', authorizationExpiresAt: Math.floor(Date.now() / 1000) + 120,
-  authenticationExpiresAt: Math.floor(Date.now() / 1000) + 120,
-  securityVersion: {realm: '1', client: '1', subject: '1'}, ssoLogoutUri: `https://idp.example/tenants/${tenantId}/logout`,
+  clientId: 'tianshu-web', resource: 'https://tianshu.example.invalid/resource', accessExpiresAt: Date.now() + 120_000,
 })
 export const authorizationFixture = (tenantId = '1001') => {
   const snapshot = permissionSnapshot(tenantId)
   return {identity: gatewayIdentity(tenantId), snapshot, binding: snapshotContext(snapshot, gatewayAuth.context.epoch)}
 }
-export const csrfFixture = () => ({headerName: 'X-CSRF-TOKEN' as const, token: 'test-csrf', expiresAt: new Date(Date.now() + 60_000).toISOString()})

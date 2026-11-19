@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 import { webcrypto } from 'node:crypto'
-import {vi} from 'vitest'
+import {afterEach, beforeEach, vi} from 'vitest'
+import {gatewayAuth} from '../auth/gatewayAuth'
+import {setDdcExpectedTenantId} from '../api/client'
 import {createElement} from 'react'
 import {Button} from 'antd'
 import type {ReactNode} from 'react'
@@ -51,3 +53,15 @@ vi.mock('../permissions/access', () => ({
 }))
 vi.mock('../permissions/FieldCatalog', () => ({useDdcWritable: () => true,
   FieldCatalogProvider: ({children}: {children: ReactNode}) => children}))
+
+beforeEach(() => {
+  setDdcExpectedTenantId('1001')
+  vi.spyOn(gatewayAuth, 'apiBaseUrl').mockReturnValue('https://tianshu.example.invalid')
+  vi.spyOn(gatewayAuth, 'authority').mockImplementation(() => ({
+    apiBaseUrl: gatewayAuth.apiBaseUrl(), context: gatewayAuth.context,
+    resource: 'https://tianshu.example.invalid/resource',
+    authorizationHeader: () => 'Bearer tianshu-resource-token',
+    invalidate: () => gatewayAuth.context.invalidate(),
+  }))
+})
+afterEach(() => { setDdcExpectedTenantId(undefined); vi.restoreAllMocks() })

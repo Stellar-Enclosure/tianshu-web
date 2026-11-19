@@ -3,6 +3,7 @@ import type {ReactNode} from 'react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {renderWithQueryClient} from './test/renderWithQueryClient'
 import App from './App'
+import {gatewayAuth} from './auth/gatewayAuth'
 
 const auth = vi.hoisted(() => ({
   authorized: false,
@@ -29,6 +30,16 @@ describe('App', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no session')))
     renderWithQueryClient(<App />)
     expect(await screen.findByText('Tianshu 管理端')).toBeInTheDocument()
+  })
+
+  it('completes the exact callback before mounting the authenticated application', async () => {
+    window.history.replaceState({}, '', '/auth/oidc/callback/tianshu-1001?code=one-use&state=test-state')
+    const callback = vi.spyOn(gatewayAuth, 'completeCallback').mockResolvedValue('/registry')
+    auth.authorized = false
+    renderWithQueryClient(<App />)
+    await screen.findByText('Tianshu 管理端')
+    expect(callback).toHaveBeenCalledWith(expect.stringContaining('?code=one-use&state=test-state'), false)
+    expect(window.location.pathname).toBe('/registry')
   })
 
   it('renders configuration workload instances at the dedicated route', async () => {

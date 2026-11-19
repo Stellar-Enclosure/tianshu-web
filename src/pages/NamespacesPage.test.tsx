@@ -1,5 +1,3 @@
-import {gatewayAuth} from '../auth/gatewayAuth'
-import {csrfFixture} from '../test/permissionFixture'
 import {fireEvent, screen, waitFor} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {setDdcUnauthorizedHandler} from '../api/client'
@@ -58,7 +56,8 @@ const jsonResponse = (body: unknown) => new Response(
 
 const mockEndpoints = (pageResponse: () => Response): void => {
   vi.mocked(fetch).mockImplementation((input) => {
-    const url = String(input).replace(/^\/apps\/edge-tianshu/, '')
+    const endpoint = new URL(String(input))
+    const url = endpoint.pathname + endpoint.search
     if (url.includes('/namespaces/page')) return Promise.resolve(pageResponse())
     if (url.includes('/bizs')) {
       return Promise.resolve(jsonResponse(record([
@@ -91,7 +90,6 @@ const mockEndpoints = (pageResponse: () => Response): void => {
 describe('NamespacesPage', () => {
   beforeEach(() => {
     setDdcUnauthorizedHandler(() => {})
-    vi.spyOn(gatewayAuth, 'csrf').mockResolvedValue(csrfFixture())
     vi.stubGlobal('fetch', vi.fn())
   })
 

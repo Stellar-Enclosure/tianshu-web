@@ -1,4 +1,4 @@
-import {authorizationFixture, csrfFixture} from '../test/permissionFixture'
+import {authorizationFixture} from '../test/permissionFixture'
 import {setDdcPermissionContext} from './client'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {beginDdcSession, setDdcExpectedTenantId} from './client'
@@ -23,7 +23,10 @@ describe('administration language endpoints', () => {
     setDdcExpectedTenantId(undefined)
     vi.mocked(fetch).mockResolvedValue(envelope({pageCode: 'tianshu.auth', locale: 'en-US', messages: {title: 'Sign in'}}))
     expect(await getPublicI18nBundle('en-US')).toMatchObject({pageCode: 'tianshu.auth'})
-    expect(fetch).toHaveBeenCalledWith('/apps/edge-tianshu/api/v1/tianshu/i18n/public/bundle?locale=en-US', {credentials: 'omit', signal: undefined})
+    expect(fetch).toHaveBeenCalledWith('https://tianshu.example.invalid/api/v1/tianshu/i18n/public/bundle?locale=en-US', expect.objectContaining({credentials: 'omit', redirect: 'error'}))
+    const headers = new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers)
+    expect(headers.has('Authorization')).toBe(false)
+    expect(headers.has('X-Egon-Tianshu-Tenant')).toBe(false)
   })
 
   it('sends the page, locale and verified catalog binding for the server-owned administration scope', async () => {
@@ -36,26 +39,24 @@ describe('administration language endpoints', () => {
     expect(new Headers(request?.headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
   })
 
-  it('initializes explicitly with a current CSRF challenge and no caller-supplied scope', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({...csrfFixture(), token: 'test-challenge'})))
-      .mockResolvedValueOnce(envelope({created: 15, skipped: 0}))
+  it('initializes under the Resource Bearer with no caller-supplied scope or CSRF', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(envelope({created: 15, skipped: 0}))
     expect(await initializeAdminI18n()).toEqual({created: 15, skipped: 0})
-    expect(fetch).toHaveBeenNthCalledWith(1, '/apps/edge-tianshu/auth/csrf', expect.objectContaining({credentials: 'include', signal: expect.any(AbortSignal)}))
-    const [url, request] = vi.mocked(fetch).mock.calls[1]
-    expect(url).toBe('/apps/edge-tianshu/api/v1/tianshu/i18n/admin/initialize')
-    expect(request).toMatchObject({method: 'POST', credentials: 'include', body: undefined})
-    expect(new Headers(request?.headers).get('X-CSRF-TOKEN')).toBe('test-challenge')
-    expect(new Headers(request?.headers).get('X-Egon-Tianshu-Tenant')).toBe('1001')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, request] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://tianshu.example.invalid/api/v1/tianshu/i18n/admin/initialize')
+    expect(request).toMatchObject({method: 'POST', credentials: 'omit', body: undefined})
+    const headers = new Headers(request?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer tianshu-resource-token')
+    expect(headers.get('X-CSRF-TOKEN')).toBeNull()
+    expect(headers.get('X-Egon-Tianshu-Tenant')).toBe('1001')
   })
 
-  it('never sends the mutation when the challenge is invalid or the tenant changed while waiting', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({headerName: 'Authorization', token: 'invalid'})))
-    await expect(initializeAdminI18n()).rejects.toMatchObject({code: 'TIANSHU_ADMIN_WEB_UPSTREAM_UNAVAILABLE'})
-    expect(fetch).toHaveBeenCalledTimes(1)
-    vi.mocked(fetch).mockClear().mockImplementation(async () => {
+  it('discards an in-flight initialization result that arrives after a tenant switch', async () => {
+    vi.mocked(fetch).mockImplementation(async () => {
       beginDdcSession()
       setDdcExpectedTenantId('tenant-b')
-      return new Response(JSON.stringify({...csrfFixture(), token: 'old-challenge'}))
+      return envelope({created: 15, skipped: 0})
     })
     await expect(initializeAdminI18n()).rejects.toMatchObject({name: 'AbortError'})
     expect(fetch).toHaveBeenCalledTimes(1)

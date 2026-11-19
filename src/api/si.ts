@@ -39,6 +39,8 @@ export const ddcSiQueryKeys = {
     [...createDdcTenantQueryKey('si'), 'matrix', params] as const,
   detail: (id: string | number) => [...createDdcTenantQueryKey('si'), 'detail', String(id)] as const,
   versions: (id: string | number) => [...createDdcTenantQueryKey('si'), 'versions', String(id)] as const,
+  version: (id: string | number, versionNo: string | number) =>
+    [...createDdcTenantQueryKey('si'), 'version', String(id), String(versionNo)] as const,
   references: (id: string | number, versionNo: number | string, direction: 'OUTBOUND' | 'INBOUND') =>
     [...createDdcTenantQueryKey('si'), 'references', String(id), String(versionNo), direction] as const,
 }
@@ -142,7 +144,7 @@ export async function pageSiResourceVersions(
 
 export async function getSiResourceVersion(
   id: string | number,
-  versionNo: number,
+  versionNo: number | string,
   options: RequestOptions = {},
 ): Promise<SiVersionItem> {
   requireTenant()

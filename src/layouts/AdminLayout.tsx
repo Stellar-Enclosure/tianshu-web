@@ -93,6 +93,12 @@ export default function AdminLayout() {
             void logout()
           },
         },
+        {
+          key: 'sso-logout',
+          label: t('shell.ssoLogout'),
+          icon: <LogoutOutlined />,
+          onClick: () => { void logout(true) },
+        },
       ],
     },
     footer: { version },

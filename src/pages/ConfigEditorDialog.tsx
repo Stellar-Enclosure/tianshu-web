@@ -1,12 +1,12 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {useDdcPermission} from '../permissions/access'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { App, Form, Grid, Input, Modal, Space, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Form, Grid, Input, Modal, Space, Tag, Typography } from 'antd'
 import { ddcApi } from '../api/client'
 import { formatAdminError } from '../i18n/errors'
 import { usePageMessages, type AdminTranslate } from '../i18n/AdminI18nProvider'
-import type { DdcConfig, DdcNamespaceEnvAppBinding } from '../api/types'
+import type { DdcConfig, DdcConfigPreview, DdcNamespaceEnvAppBinding } from '../api/types'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
 import { scopeOptionQueryKey } from '../components/scope/useScopeOptions'
 
@@ -53,6 +53,17 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
   const [scope, setScope] = useState<ConfigScope>(defaultScope)
   const [saving, setSaving] = useState(false)
   const editing = Boolean(config?.id)
+  const content = Form.useWatch('content', form)
+  const previewRequest = useRef<AbortController | null>(null)
+  const [preview, setPreview] = useState<{key: string; result: DdcConfigPreview}>()
+  const [previewing, setPreviewing] = useState(false)
+  const previewInput = {bizCode: scope.bizCode, env: scope.env, appCode: scope.appCode,
+    ...(config?.id ? {configId: config.id, expectedVersion: config.currentVersion} : {}), content}
+  const previewKey = JSON.stringify(previewInput)
+  const previewResult = open && preview?.key === previewKey ? preview.result : undefined
+
+  useEffect(() => () => { previewRequest.current?.abort() }, [open, previewKey])
+
 
   useEffect(() => {
     if (!open) return
@@ -118,6 +129,7 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
       await queryClient.invalidateQueries({ queryKey: ['tianshu', 'configs'] })
       await queryClient.invalidateQueries({ queryKey: scopeOptionQueryKey })
       message.success(t('feedback.saved'))
+      setPreview(undefined)
       onSaved()
     } catch (error) {
       message.error(formatAdminError(error, t))
@@ -126,11 +138,36 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
     }
   }
 
+  const loadPreview = async () => {
+    if (!mayMutate || !content?.trim() || !scope.bizCode || !scope.env || !scope.appCode) return
+    previewRequest.current?.abort()
+    const request = new AbortController()
+    previewRequest.current = request
+    setPreview(undefined)
+    setPreviewing(true)
+    try {
+      const result = await ddcApi<DdcConfigPreview>('/api/v1/tianshu/configs/preview', {
+        method: 'POST', body: previewInput, signal: request.signal,
+      })
+      if (!request.signal.aborted) setPreview({key: previewKey, result})
+    } catch (error) {
+      if (!request.signal.aborted) message.error(formatAdminError(error, t))
+    } finally {
+      if (previewRequest.current === request) {
+        previewRequest.current = null
+        setPreviewing(false)
+      }
+    }
+  }
+
+  const changeNames = {ADDED: t('preview.added'), REMOVED: t('preview.removed'),
+    UPDATED: t('preview.updated'), RULE_CHANGED: t('preview.ruleChanged')}
+
   return (
     <Modal
       open={open}
       title={editing ? t('actions.edit') : t('actions.create')}
-      onCancel={onClose}
+      onCancel={() => { setPreview(undefined); onClose() }}
       onOk={() => void save()}
       okButtonProps={{disabled: !mayMutate}}
       okText={t('common.save')}
@@ -170,6 +207,33 @@ export default function ConfigEditorDialog({ open, config, defaultScope, onClose
             style={{ fontFamily: 'monospace' }}
           />
         </Form.Item>
+        <Button onClick={() => void loadPreview()} loading={previewing}
+          disabled={!mayMutate || !content?.trim() || !scope.bizCode || !scope.env || !scope.appCode}>
+          {t('preview.action')}
+        </Button>
+        {previewResult && <Card size="small" title={t('preview.title')} style={{marginBlock: 12}}>
+          <Alert type="info" message={previewResult.rolloutRequired === true ? t('preview.rollout')
+            : previewResult.rolloutRequired === false ? t('preview.noRollout') : t('preview.unknown')} />
+          <dl>
+            <dt>{t('preview.baseline')}</dt>
+            <dd>{previewResult.publishedRevision === null ? t('preview.noBaseline')
+              : previewResult.publishedRevision ?? t('preview.unknown')}</dd>
+            <dt>{t('preview.changes')}</dt>
+            <dd>{previewResult.changes?.length ? <ul>{previewResult.changes.map((change, index) =>
+              <li key={change.key ?? index}><code>{change.key ?? '—'}</code>{' / '}{change.mode ?? '—'}
+                {' / '}{change.change ? changeNames[change.change] : '—'}</li>)}</ul>
+              : previewResult.changes ? t('preview.none') : t('preview.unknown')}</dd>
+            <dt>{t('preview.secretReferences')}</dt>
+            <dd>{previewResult.secretReferences?.length ? <ul>{previewResult.secretReferences.map((ref, index) =>
+              <li key={ref.key ?? index}><code>{[ref.key, ref.name, ref.version].filter(Boolean).join(' / ') || '—'}</code></li>)}</ul>
+              : previewResult.secretReferences ? t('preview.none') : t('preview.unknown')}</dd>
+            <dt>{t('preview.targets')}</dt>
+            <dd>{previewResult.targets?.length ? <ul>{previewResult.targets.map((target, index) =>
+              <li key={target.bindingId ?? index}>
+                <code>{[target.clusterId, target.namespace, target.workloadName].filter(Boolean).join(' / ') || '—'}</code>
+              </li>)}</ul> : previewResult.targets ? t('preview.none') : t('preview.unknown')}</dd>
+          </dl>
+        </Card>}
         {!editing && (
           <Form.Item name="description" label={t('common.description')}>
             <Input />

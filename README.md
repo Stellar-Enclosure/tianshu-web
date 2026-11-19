@@ -18,7 +18,7 @@ React management console for the Tianshu service registry, configuration center 
 
 Routes are defined in [src/App.tsx](src/App.tsx); page implementations live under [src/pages](src/pages/), with [AI API contracts](src/api/ai.ts). Management tables use backend pagination while scope selectors retain complete option lists.
 
-The backend is [tianshu-service](https://github.com/Stellar-Enclosure/tianshu-service). Authentication uses the shared SDK and fixed Edge application alias `edge-tianshu`: `/apps/edge-tianshu/auth/identity` establishes identity, then `/apps/edge-tianshu/api/v1/authorization/effective-permissions` supplies the current permission view. OAuth tokens remain on the server. Console admission requires `TIANSHU_READ`; the existing routes, navigation and write actions each use standard resource declarations and shared guards. The SPA does not implement machine gRPC registration, configuration delivery or the Admin's publication state machine. It runs standalone or as a portal child using `VITE_BASE_PATH`; real authentication and service availability require separate runtime verification.
+The backend is [tianshu-service](https://github.com/Stellar-Enclosure/tianshu-service). Authentication uses the shared PUBLIC OAuth2 SDK with S256 PKCE. The deployed Tianshu audience authorizes the permission bootstrap, business REST and XLSX exports. The browser keeps credentials in memory and validates the permission view against the verified issuer, identity, tenant and catalog. Console admission requires `TIANSHU_READ`. Backend policies continue to enforce permission and data scope for each operation.
 
 ## Page translations
 
@@ -56,7 +56,7 @@ PAC_BUILD_ID=release-build-id npm run build
 
 The lock must match the selected RC artifact, scanner checkout and dependency lock. `LOCAL_UNCOMMITTED` is only same-batch source verification; production delivery requires `PINNED_COMMIT`, an immutable source checkout and an explicit build ID. No missing-tool fallback bypasses the gate. SDK publication and a reproducible formal dependency lock are separate release steps.
 
-Set `VITE_PERMISSION_NAMESPACE` and `VITE_PERMISSION_ENVIRONMENT` to the deployment's fixed Tianshu catalog. Missing or mismatched bindings fail closed. `VITE_OAUTH_APP_ALIAS` defaults to `edge-tianshu`; `VITE_YUHENG_ORIGIN` is the Edge origin, and `VITE_BASE_PATH` remains the static mount path. Development/preview proxy `/apps` to `TIANSHU_AUTH_PROXY` (default `http://127.0.0.1:18180`).
+Set `VITE_PERMISSION_NAMESPACE` and `VITE_PERMISSION_ENVIRONMENT` to the deployment's fixed Tianshu catalog. Set `VITE_TIANSHU_OAUTH_CONFIG` to the approved public registration JSON containing `webOrigin`, `resource`, `apiBaseUrl`, `activeResource` and `registrations`. Each registration uses the fixed Tianshu resource and API base, its trusted tenant issuer, and an exact `{webOrigin}{VITE_BASE_PATH}auth/oidc/callback/{registrationId}` HTTPS redirect URI. Use the corresponding `auth/oidc/popup/` URI for Portal authorization. Embedded authorization uses a callback on the Portal opener's origin. A user can open the approved standalone origin when the popup is unavailable. Deploy the browser and API via an approved same-origin path. A cross-origin deployment requires compatible resource-side CORS before publishing routes. Local and SSO sign-out both discard the console's current permission view and requests.
 
 ## Application delivery (no package publication)
 

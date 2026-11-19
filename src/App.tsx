@@ -1,8 +1,11 @@
+import {Result} from 'antd'
+import {cloudDeliveryMessages} from './permissions/messages'
+import {gatewayAuth, LOGIN_CALLBACK, POPUP_CALLBACK} from './auth/gatewayAuth'
 import {FieldCatalogProvider} from './permissions/FieldCatalog'
 import {RequirePermission} from './permissions/access'
 import ResourceMetadataPage from './pages/ResourceMetadataPage'
 import {useEffect, useState} from 'react'
-import {createBrowserRouter, Navigate, RouterProvider} from 'react-router-dom'
+import {createBrowserRouter, Link, Navigate, RouterProvider, useNavigate} from 'react-router-dom'
 import {AuthProvider} from './auth/AuthContext'
 import {RequireAuth} from './auth/RouteGuards'
 import AdminLayout from './layouts/AdminLayout'
@@ -32,12 +35,37 @@ if (!configuredBase.startsWith('/') || configuredBase.startsWith('//')
 }
 const basePath = configuredBase === '/' ? '/' : configuredBase.replace(/\/?$/, '/')
 
-const routes = [{
+function OAuthCallback({popup}: {popup: boolean}) {
+  const [url] = useState(() => window.location.href)
+  const [state, setState] = useState<'pending' | 'done' | 'failed'>('pending')
+  const navigate = useNavigate()
+  useEffect(() => {
+    let active = true
+    void gatewayAuth.completeCallback(url, popup).then(returnTo => {
+      if (!active) return
+      if (returnTo) void navigate(returnTo, {replace: true})
+      else setState('done')
+    }, () => { if (active) setState('failed') })
+    return () => { active = false }
+  }, [url, navigate, popup])
+  const locale = navigator.language.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
+  const message = (key: string) => cloudDeliveryMessages.find(entry => entry.pageCode === 'tianshu.auth' && entry.key === key)?.defaults[locale]
+  const key = state === 'failed' ? 'auth.callbackFailed' : state === 'done' ? 'auth.callbackDone' : 'auth.callbackPending'
+  return <Result status={state === 'failed' ? 'error' : 'info'} title={message(key)}
+    extra={state === 'failed' && !popup ? <Link to="/">{message('auth.callbackBack')}</Link> : undefined} />
+}
+
+const routes = [
+  {path: LOGIN_CALLBACK, caseSensitive: true, element: <OAuthCallback popup={false} />},
+  {path: POPUP_CALLBACK, caseSensitive: true, element: <OAuthCallback popup />},
+  {
   path: '/',
   element: (
-    <RequireAuth>
-      <AdminLayout />
-    </RequireAuth>
+    <AuthProvider>
+      <FieldCatalogProvider><AdminI18nProvider><RequireAuth>
+        <AdminLayout />
+      </RequireAuth></AdminI18nProvider></FieldCatalogProvider>
+    </AuthProvider>
   ),
   children: [
     {path: 'metadata/resources', element: <RequirePermission resourceKey="tianshu.page.resourceMetadata"><PageLanguageBoundary pageCode="tianshu.metadata"><ResourceMetadataPage /></PageLanguageBoundary></RequirePermission>},
@@ -67,15 +95,19 @@ export default function App() {
   const [router, setRouter] = useState<ReturnType<typeof createBrowserRouter> | null>(null)
 
   useEffect(() => {
-    const currentRouter = createBrowserRouter(routes, {basename: basePath})
-    setRouter(currentRouter)
-    return () => currentRouter.dispose()
+    let currentRouter: ReturnType<typeof createBrowserRouter> | undefined
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      currentRouter = createBrowserRouter(routes, {basename: basePath})
+      setRouter(currentRouter)
+    })
+    return () => {
+      active = false
+      currentRouter?.dispose()
+    }
   }, [])
 
   if (!router) return null
-  return (
-    <AuthProvider>
-      <FieldCatalogProvider><AdminI18nProvider><RouterProvider router={router} /></AdminI18nProvider></FieldCatalogProvider>
-    </AuthProvider>
-  )
+  return <RouterProvider router={router} />
 }

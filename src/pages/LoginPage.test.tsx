@@ -39,6 +39,6 @@ describe('LoginPage', () => {
     expect(screen.queryByLabelText('密码')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', {name: /使用统一身份登录/}))
 
-    await waitFor(() => expect(auth.login).toHaveBeenCalledWith())
+    await waitFor(() => expect(auth.login).toHaveBeenCalledWith('/'))
   })
 })
