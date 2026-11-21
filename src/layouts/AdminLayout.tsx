@@ -26,7 +26,7 @@ import { version } from '../../package.json'
 import { useAuth } from '../auth/AuthContext'
 
 interface WujieRuntimeWindow extends Window {
-  $wujie?: { props?: { embedded?: boolean } }
+  $wujie?: { props?: { embedded?: boolean; workbenchHost?: unknown } }
 }
 
 // 平台自己的导航树；shared 只负责左侧递归树的渲染与高亮。
@@ -74,7 +74,9 @@ export default function AdminLayout() {
     const resource = resources.find(resource => resource.type === 'MENU' && 'route' in resource.target && resource.target.route === path)
     return !!resource && permission.allows('requirement' in resource ? resource.requirement : {access: resource.access})
   }), [permission, t])
-  const embedded = (window as WujieRuntimeWindow).$wujie?.props?.embedded === true
+  const wujieProps = (window as WujieRuntimeWindow).$wujie?.props
+  const workbenchMode = wujieProps?.workbenchHost !== undefined
+  const embedded = wujieProps?.embedded === true
 
   const config: EnterpriseLayoutConfig = {
     platformName: t('shell.platformName'),
@@ -103,9 +105,11 @@ export default function AdminLayout() {
     },
     footer: { version },
   }
-  const layoutConfig: EnterpriseLayoutConfig = embedded
-    ? {...config, hideHeader: true, hideFooter: true}
-    : config
+  const layoutConfig: EnterpriseLayoutConfig = workbenchMode
+    ? {...config, layoutMode: 'content', hideHeader: true, hideFooter: true}
+    : embedded
+      ? {...config, layoutMode: 'embedded', hideHeader: true, hideFooter: true}
+      : config
 
   return (
     <EnterpriseLayout config={layoutConfig}>
