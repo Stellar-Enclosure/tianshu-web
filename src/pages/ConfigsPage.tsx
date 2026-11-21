@@ -1,5 +1,6 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { DownOutlined } from '@ant-design/icons'
 import {
   keepPreviousData,
@@ -10,7 +11,6 @@ import {
 import {
   App,
   Button,
-  Card,
   Drawer,
   Dropdown,
   Grid,
@@ -20,8 +20,8 @@ import {
   Typography,
 } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
-import { useMemo, useState } from 'react'
-import { ddcApi, ddcPageApi } from '../api/client'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ddcApi, ddcPageApi, getDdcRequestContext } from '../api/client'
 import { formatAdminError } from '../i18n/errors'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminPageState as PageState } from '../components/page/AdminPageState'
@@ -33,9 +33,23 @@ import type {
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
 import { usePageState } from '../hooks/usePageState'
-import { buildQuery, formatTime } from '../lib/query'
+import {
+  buildQuery,
+  formatTime,
+  makeWorkbenchSnapshotKey,
+  readWorkbenchSnapshot,
+  syncWorkbenchSnapshotSession,
+  writeWorkbenchSnapshot,
+} from '../lib/query'
 import { uuidV7 } from '../lib/uuid'
 import ConfigEditorDialog, { type ConfigScope } from './ConfigEditorDialog'
+
+type ConfigsSnapshot = {
+  draftScope: ScopeValue
+  submittedScope: ScopeValue
+  page: { pageNo: number; pageSize: number }
+  scrollTop: number
+}
 
 const emptyScope: ScopeValue = {
   bizCode: '',
@@ -48,6 +62,13 @@ const configScopeLabel = (config: DdcConfig): string => `${config.bizCode} / ${c
 
 export default function ConfigsPage() {
   const { t, locale } = usePageMessages('tianshu.configs')
+  const { embedded, activeTabKey } = useEmbeddedWorkbench()
+  const reqCtx = getDdcRequestContext()
+  const sessionScope = `${reqCtx.tenantId}:${reqCtx.sessionGeneration}`
+  syncWorkbenchSnapshotSession(sessionScope)
+  const snapshotKey = makeWorkbenchSnapshotKey(sessionScope, activeTabKey ?? 'tianshu.page.configs')
+  const savedSnapshot = readWorkbenchSnapshot<ConfigsSnapshot>(snapshotKey)
+
   const publishWritable = useDdcWritable('DdcPublishRequest')
   const rollbackWritable = useDdcWritable('DdcConfigRollbackRequest')
   const mayMutate = useDdcPermission('tianshu.button.ConfigsPage.write')
@@ -58,15 +79,50 @@ export default function ConfigsPage() {
   const { message, modal } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
-  const configPage = usePageState()
+  const [configPageState, setConfigPageState] = useState(() => savedSnapshot?.page ?? { pageNo: 1, pageSize: 10 })
+  const configPage = {
+    page: configPageState,
+    resetPage: () => setConfigPageState((current) => ({ ...current, pageNo: 1 })),
+    onTableChange: (pageNo: number, pageSize: number) => {
+      setConfigPageState((current) => ({
+        pageNo: current.pageSize === pageSize ? pageNo : 1,
+        pageSize,
+      }))
+    },
+  }
   const versionPage = usePageState()
-  const [draftScope, setDraftScope] = useState<ScopeValue>({ ...emptyScope })
-  const [submittedScope, setSubmittedScope] = useState<ScopeValue>({
-    ...emptyScope,
-  })
+  const [draftScope, setDraftScope] = useState<ScopeValue>(() => savedSnapshot?.draftScope ?? { ...emptyScope })
+  const [submittedScope, setSubmittedScope] = useState<ScopeValue>(() =>
+    savedSnapshot?.submittedScope ?? { ...emptyScope },
+  )
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<DdcConfig | null>(null)
   const [versionsConfig, setVersionsConfig] = useState<DdcConfig | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const initialScrollTopRef = useRef(savedSnapshot?.scrollTop ?? 0)
+  const snapshotRef = useRef<ConfigsSnapshot>({
+    draftScope,
+    submittedScope,
+    page: configPageState,
+    scrollTop: savedSnapshot?.scrollTop ?? 0,
+  })
+
+  useEffect(() => {
+    snapshotRef.current = {
+      draftScope,
+      submittedScope,
+      page: configPageState,
+      scrollTop: snapshotRef.current.scrollTop,
+    }
+    writeWorkbenchSnapshot(snapshotKey, snapshotRef.current)
+  }, [draftScope, submittedScope, configPageState, snapshotKey])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (el && initialScrollTopRef.current > 0) {
+      el.scrollTop = initialScrollTopRef.current
+    }
+  }, [])
 
   const configsQuery = useQuery({
     queryKey: ['tianshu', 'configs', submittedScope, configPage.page],
@@ -389,54 +445,66 @@ export default function ConfigsPage() {
   ]
 
   return (
-    <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={(
+    <div
+      ref={containerRef}
+      onScroll={(event) => {
+        snapshotRef.current.scrollTop = Math.max(0, event.currentTarget.scrollTop)
+        writeWorkbenchSnapshot(snapshotKey, snapshotRef.current)
+      }}
+    >
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <ScopeSelects
+              value={draftScope}
+              onChange={setDraftScope}
+            />
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
           <PermissionButton resourceKey="tianshu.button.ConfigsPage.write" type="primary" onClick={openNewDialog}>
             {t('actions.create')}
           </PermissionButton>
         )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <PageState
+            loading={configsQuery.isPending}
+            error={configsQuery.error}
+            empty={(configsQuery.data?.records.length ?? 0) === 0}
+            onRetry={() => { void configsQuery.refetch() }}
+          >
+            <Table<DdcConfig>
+              rowKey={(row) => row.id}
+              columns={configColumns}
+              dataSource={configsQuery.data?.records ?? []}
+              loading={configsQuery.isFetching}
+              size="small"
+              scroll={{ x: 'max-content' }}
+              pagination={false}
+            />
+          </PageState>
+        )}
+        pagination={{
+          mode: 'page',
+          current: configPage.page.pageNo,
+          pageSize: configPage.page.pageSize,
+          total: configsQuery.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: configPage.onTableChange,
+        }}
+        footer={configsQuery.data ? t('common.total', { total: configsQuery.data.page.total }) : undefined}
       />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <ScopeSelects
-            value={draftScope}
-            onChange={setDraftScope}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        <PageState
-          loading={configsQuery.isPending}
-          error={configsQuery.error}
-          empty={(configsQuery.data?.records.length ?? 0) === 0}
-          onRetry={() => { void configsQuery.refetch() }}
-        >
-          <Table<DdcConfig>
-            rowKey={(row) => row.id}
-            columns={configColumns}
-            dataSource={configsQuery.data?.records ?? []}
-            loading={configsQuery.isFetching}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            pagination={{
-              current: configsQuery.data?.page.pageNo
-                ?? configPage.page.pageNo,
-              pageSize: configsQuery.data?.page.pageSize
-                ?? configPage.page.pageSize,
-              total: configsQuery.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: configPage.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
       <ConfigEditorDialog
         open={dialogOpen}
         config={editingConfig}

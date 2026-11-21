@@ -1,9 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { App as AntdApp } from 'antd'
 import { createMemoryRouter, Link, Outlet, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EmbeddedWorkbench, type WorkbenchHost } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { DdcApiError, setDdcExpectedTenantId } from '../api/client'
+import { clearWorkbenchSnapshots } from '../lib/query'
 import type { DdcAiContent, DdcAiResourceResult } from '../api/types'
 import { createDdcQueryClient } from '../query/queryClient'
 import AdminLayout from '../layouts/AdminLayout'
@@ -46,6 +48,8 @@ vi.mock('./AiFeedbackPanel', () => ({
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
     identity: 'admin',
+    tenantId: 'tenant-1',
+    sessionGeneration: 1,
     logout: authContext.logout,
     registerUnsavedChangesGuard: authContext.registerUnsavedChangesGuard,
   }),
@@ -124,6 +128,7 @@ const OutletHarness = () => {
 
 describe('AiResourceEditorPage', () => {
   beforeEach(() => {
+    clearWorkbenchSnapshots()
     setDdcExpectedTenantId('tenant-1')
     authContext.logout.mockClear()
     authContext.logoutCompletion.mockReset()
@@ -322,5 +327,109 @@ describe('AiResourceEditorPage', () => {
     fireEvent.click(await screen.findByText('退出登录'))
     fireEvent.click(await screen.findByRole('button', { name: '放弃修改并继续' }))
     await waitFor(() => expect(authContext.logoutCompletion).toHaveBeenCalledTimes(1))
+  })
+
+  it('connects workbench leave guard per entity id, preserves per-entity drafts across tab switches, and increments guardRevision on edit', async () => {
+    aiApi.getAiResource.mockImplementation(async (id: string) => ({
+      ...promptResult('3', `服务器内容-${id}`),
+      resource: { ...promptResult('3', '').resource, id, resourceKey: `key-${id}` },
+    }))
+
+    let attachedPort: Parameters<WorkbenchHost['attach']>[0] | null = null
+    const host: WorkbenchHost = {
+      attach: (port) => {
+        attachedPort = port
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const router = createMemoryRouter([
+      {
+        path: '/',
+        element: (
+          <EmbeddedWorkbench
+            host={host}
+            status="ready"
+            pages={[
+              { pageId: 'tianshu.page.aiEditor', pattern: '/ai/resources/:id', label: 'AI 编辑器', identityParams: ['id'], queryKeys: [] },
+              { pageId: 'tianshu.page.configs', pattern: '/configs', label: '配置管理', identityParams: [], queryKeys: [] },
+            ]}
+            onPresent={async () => ({ ok: true })}
+          >
+            <Outlet />
+          </EmbeddedWorkbench>
+        ),
+        children: [
+          { path: 'ai/resources/:id', element: <AiResourceEditorPage /> },
+          { path: 'configs', element: <div>配置页占位</div> },
+        ],
+      },
+    ], { initialEntries: ['/ai/resources/810001'] })
+
+    const queryClient = createDdcQueryClient()
+    render(
+      <AntdApp>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </AntdApp>,
+    )
+
+    const tab1Key = '["tianshu","tianshu.page.aiEditor","810001"]'
+    const tab2Key = '["tianshu","tianshu.page.aiEditor","810002"]'
+
+    await act(async () => {
+      await attachedPort?.present({
+        mode: 'show',
+        navigationId: 1,
+        tabKey: tab1Key,
+        target: { path: '/ai/resources/810001', search: '' },
+        signal: new AbortController().signal,
+      })
+    })
+
+    const cleanCheck = await attachedPort!.checkLeave({ reason: 'close', tabKey: tab1Key })
+    expect(cleanCheck).toEqual(expect.objectContaining({ ok: true, dirty: false, pendingMutation: false }))
+    const cleanRevision = (cleanCheck as { ok: true; guardRevision: number }).guardRevision
+
+    const textarea1 = await screen.findByLabelText('Prompt 正文')
+    fireEvent.change(textarea1, { target: { value: '草稿-810001' } })
+
+    const leaveCheck1 = await attachedPort!.checkLeave({ reason: 'close', tabKey: tab1Key })
+    expect(leaveCheck1).toEqual(expect.objectContaining({ ok: true, dirty: true, pendingMutation: false }))
+    const dirtyRevision = (leaveCheck1 as { ok: true; guardRevision: number }).guardRevision
+    expect(dirtyRevision).toBeGreaterThan(cleanRevision)
+
+    fireEvent.change(screen.getByLabelText('Prompt 正文'), { target: { value: '草稿-810001-更新' } })
+
+    // Switch to another entity without discarding 810001 draft; background close check still sees 810001 dirty
+    await act(async () => {
+      await router.navigate('/ai/resources/810002')
+      await attachedPort?.present({
+        mode: 'show',
+        navigationId: 2,
+        tabKey: tab2Key,
+        target: { path: '/ai/resources/810002', search: '' },
+        signal: new AbortController().signal,
+      })
+    })
+    expect(await screen.findByLabelText('Prompt 正文')).toHaveValue('服务器内容-810002')
+    expect(await attachedPort!.checkLeave({ reason: 'close', tabKey: tab1Key }))
+      .toEqual(expect.objectContaining({ ok: true, dirty: true }))
+
+    await act(async () => {
+      await router.navigate('/ai/resources/810001')
+      await attachedPort?.present({
+        mode: 'show',
+        navigationId: 3,
+        tabKey: tab1Key,
+        target: { path: '/ai/resources/810001', search: '' },
+        signal: new AbortController().signal,
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('Prompt 正文')).toHaveValue('草稿-810001-更新')
+    })
   })
 })

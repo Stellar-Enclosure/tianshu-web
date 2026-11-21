@@ -1,5 +1,6 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileTextOutlined, FolderOpenOutlined, FolderOutlined } from '@ant-design/icons'
 import {
@@ -21,7 +22,7 @@ import type { DataNode } from 'antd/es/tree'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { BlockerFunction } from 'react-router-dom'
-import { DdcApiError } from '../api/client'
+import { DdcApiError, getDdcRequestContext } from '../api/client'
 import {
   deleteAiResource,
   ddcAiQueryKeys,
@@ -38,7 +39,14 @@ import { useAuth } from '../auth/AuthContext'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import { usePageMessages, type AdminTranslate } from '../i18n/AdminI18nProvider'
 import { formatAdminError } from '../i18n/errors'
-import { formatTime } from '../lib/query'
+import {
+  deleteWorkbenchSnapshot,
+  formatTime,
+  makeWorkbenchSnapshotKey,
+  readWorkbenchSnapshot,
+  syncWorkbenchSnapshotSession,
+  writeWorkbenchSnapshot,
+} from '../lib/query'
 import AiFeedbackPanel from './AiFeedbackPanel'
 import AiOptimizationPanel from './AiOptimizationPanel'
 import AiVersionsPanel from './AiVersionsPanel'
@@ -47,6 +55,12 @@ type DraftBuffer = {
   displayName: string
   description: string
   draft: DdcAiContent
+}
+
+type EditorEntitySnapshot = {
+  baseline: DdcAiResourceResult
+  buffer: DraftBuffer
+  selectedPath: string
 }
 
 type NodeOperation = 'new-file' | 'new-directory' | 'rename' | 'move'
@@ -83,7 +97,7 @@ const isValidPath = (path: string): boolean => {
   const segments = path.split('/')
   return segments.length <= 16
     && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..'
-      && !/[\u0000-\u001f\u007f]/.test(segment))
+      && !Array.from(segment).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127))
     && new TextEncoder().encode(path).length <= 1024
 }
 
@@ -152,25 +166,38 @@ const failureText = (error: unknown, t: AdminTranslate): string => {
 }
 
 export default function AiResourceEditorPage() {
+  const { id = '' } = useParams()
+  const reqCtx = getDdcRequestContext()
+  const sessionScope = `${reqCtx.tenantId}:${reqCtx.sessionGeneration}`
+  syncWorkbenchSnapshotSession(sessionScope)
+  return <AiResourceEditorInner key={`${sessionScope}:${id}`} id={id} sessionScope={sessionScope} />
+}
+
+function AiResourceEditorInner({ id, sessionScope }: { id: string; sessionScope: string }) {
   const { t, locale } = usePageMessages('tianshu.ai.editor')
+  const { embedded, setLeaveGuard, clearLeaveGuard } = useEmbeddedWorkbench()
   const fieldsWritable = useDdcWritable('DdcAiDraftCommand')
   const mayMutate = useDdcPermission('tianshu.button.AiResourceEditorPage.ai_write') && fieldsWritable
   const { message, modal } = App.useApp()
   const { error: authError, registerUnsavedChangesGuard } = useAuth()
-  const { id = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState(() => searchParams.has('versionNo') ? 'versions' : 'draft')
+  const [selectedTab, setSelectedTab] = useState(() => searchParams.has('versionNo') ? 'versions' : 'draft')
+  const activeTab = searchParams.has('versionNo') ? 'versions' : selectedTab
+  const entityTabKey = id ? JSON.stringify(['tianshu', 'tianshu.page.aiEditor', id]) : '["tianshu","tianshu.page.aiEditor"]'
+  const entitySnapshotKey = makeWorkbenchSnapshotKey(sessionScope, entityTabKey)
+  const [savedEntitySnapshot] = useState(() => readWorkbenchSnapshot<EditorEntitySnapshot>(entitySnapshotKey))
+
   const queryKey = ddcAiQueryKeys.resource(id)
   const resourceQuery = useQuery({
     queryKey,
     queryFn: ({ signal }) => getAiResource(id, { signal }),
     enabled: id !== '',
   })
-  const [baseline, setBaseline] = useState<DdcAiResourceResult | null>(null)
-  const [buffer, setBuffer] = useState<DraftBuffer | null>(null)
-  const [selectedPath, setSelectedPath] = useState('')
+  const [baseline, setBaseline] = useState<DdcAiResourceResult | null>(() => savedEntitySnapshot?.baseline ?? null)
+  const [buffer, setBuffer] = useState<DraftBuffer | null>(() => savedEntitySnapshot?.buffer ?? null)
+  const [selectedPath, setSelectedPath] = useState(() => savedEntitySnapshot?.selectedPath ?? '')
   const [saveFailure, setSaveFailure] = useState<{ error: unknown }>()
   const [conflict, setConflict] = useState(false)
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(null)
@@ -179,15 +206,16 @@ export default function AiResourceEditorPage() {
   const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false)
   const logoutConfirmationResolver = useRef<((allowed: boolean) => void) | null>(null)
   const [pendingVersionOperation, setPendingVersionOperation] = useState(false)
-  const dirtyRef = useRef(false)
+  const dirtyRef = useRef(
+    savedEntitySnapshot ? !sameBuffer(savedEntitySnapshot.buffer, toBuffer(savedEntitySnapshot.baseline)) : false,
+  )
 
   const isDirty = baseline !== null && buffer !== null
     && !sameBuffer(buffer, toBuffer(baseline))
-  dirtyRef.current = isDirty
 
   useEffect(() => {
-    if (searchParams.has('versionNo')) setActiveTab('versions')
-  }, [searchParams])
+    dirtyRef.current = isDirty
+  }, [isDirty])
 
   useEffect(() => {
     const server = resourceQuery.data
@@ -197,6 +225,19 @@ export default function AiResourceEditorPage() {
     const firstFile = server.draft.nodes.find((node) => node.nodeType === 'FILE')
     setSelectedPath(firstFile?.path ?? '')
   }, [resourceQuery.data])
+
+  useEffect(() => {
+    if (!embedded || !baseline || !buffer) return
+    if (isDirty) {
+      writeWorkbenchSnapshot<EditorEntitySnapshot>(entitySnapshotKey, {
+        baseline,
+        buffer,
+        selectedPath,
+      })
+    } else {
+      deleteWorkbenchSnapshot(entitySnapshotKey)
+    }
+  }, [baseline, buffer, embedded, entitySnapshotKey, isDirty, selectedPath])
 
   useEffect(() => {
     if (!isDirty && !pendingVersionOperation) return
@@ -225,9 +266,9 @@ export default function AiResourceEditorPage() {
   }, [isDirty, leaveGuard, pendingVersionOperation, registerUnsavedChangesGuard])
 
   const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) =>
-    (isDirty || pendingVersionOperation) && (
+    !embedded && (isDirty || pendingVersionOperation) && (
     currentLocation.pathname !== nextLocation.pathname
-  ), [isDirty, pendingVersionOperation])
+  ), [embedded, isDirty, pendingVersionOperation])
   const blocker = useBlocker(shouldBlock)
 
   const updateDraft = (update: (current: DraftBuffer) => DraftBuffer) => {
@@ -247,6 +288,7 @@ export default function AiResourceEditorPage() {
       draft: current.draft,
     }),
     onSuccess: async (result) => {
+      deleteWorkbenchSnapshot(entitySnapshotKey)
       setBaseline(result)
       setBuffer(toBuffer(result))
       setConflict(false)
@@ -422,6 +464,18 @@ export default function AiResourceEditorPage() {
     if (!dirtyRef.current) setBuffer(toBuffer(updated))
   }
 
+  const saveInFlight = saveMutation.isPending
+  const deleteInFlight = deleteMutation.isPending
+  useEffect(() => {
+    if (!embedded) return
+    const pending = saveInFlight || deleteInFlight || pendingVersionOperation
+    if (isDirty || pending) {
+      setLeaveGuard(entityTabKey, { dirty: isDirty, pendingMutation: pending })
+    } else {
+      clearLeaveGuard(entityTabKey)
+    }
+  }, [clearLeaveGuard, deleteInFlight, embedded, entityTabKey, isDirty, pendingVersionOperation, saveInFlight, setLeaveGuard])
+
   if (resourceQuery.isPending && !resourceQuery.data) {
     return <Spin fullscreen description={t('editor.loading')} />
   }
@@ -435,8 +489,9 @@ export default function AiResourceEditorPage() {
   const resource = resourceQuery.data.resource
   const latestServer = resourceQuery.data
   const canAcknowledgeConflict = conflict && latestServer.resource.revision !== baseline.resource.revision
+
   const handleTabChange = (key: string) => {
-    setActiveTab(key)
+    setSelectedTab(key)
     const next = new URLSearchParams(searchParams)
     if (key === 'draft' || key === 'optimization') {
       next.delete('versionNo')

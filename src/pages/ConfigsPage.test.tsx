@@ -1,6 +1,12 @@
-import {fireEvent, screen, waitFor, within} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
+import {QueryClientProvider} from '@tanstack/react-query'
+import {App as AntdApp} from 'antd'
+import {MemoryRouter} from 'react-router-dom'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {EmbeddedWorkbench, type WorkbenchHost} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {setDdcUnauthorizedHandler} from '../api/client'
+import {clearWorkbenchSnapshots} from '../lib/query'
+import {createDdcQueryClient} from '../query/queryClient'
 import {renderWithQueryClient} from '../test/renderWithQueryClient'
 import ConfigsPage from './ConfigsPage'
 
@@ -96,6 +102,7 @@ const clickLastButton = (name: RegExp): void => {
 
 describe('ConfigsPage', () => {
   beforeEach(() => {
+    clearWorkbenchSnapshots()
     setDdcUnauthorizedHandler(() => {})
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -177,5 +184,75 @@ describe('ConfigsPage', () => {
     clickLastButton(/回\s*滚/)
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input, init]) =>
       String(input).includes('/rollback') && init?.method === 'POST')).toBe(true))
+  }, 10_000)
+
+  it('renders WorkspaceList four regions and restores submitted page state after switching away and back', async () => {
+    mockConfigEndpoints()
+    let attachedPort: Parameters<WorkbenchHost['attach']>[0] | null = null
+    const host: WorkbenchHost = {
+      attach: (port) => {
+        attachedPort = port
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const queryClient = createDdcQueryClient()
+
+    const renderPage = (showConfigs: boolean) => (
+      <AntdApp>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/configs']}>
+            <EmbeddedWorkbench
+              host={host}
+              status="ready"
+              pages={[{
+                pageId: 'tianshu.page.configs',
+                pattern: '/configs',
+                label: '配置资源',
+                groupKey: 'configuration',
+                groupLabel: '配置管理',
+                identityParams: [],
+                queryKeys: [],
+              }]}
+              onPresent={async () => ({ ok: true })}
+            >
+              {showConfigs ? <ConfigsPage /> : <div>other page</div>}
+            </EmbeddedWorkbench>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AntdApp>
+    )
+
+    const view = render(renderPage(true))
+    expect(await screen.findByText('业务配置')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="query"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="toolbar"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="table"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="pagination"]')).toBeInTheDocument()
+
+    await act(async () => {
+      await attachedPort?.present({
+        mode: 'show',
+        navigationId: 1,
+        tabKey: '["tianshu","tianshu.page.configs"]',
+        target: { path: '/configs', search: '' },
+        signal: new AbortController().signal,
+      })
+    })
+
+    // Navigate to page 2, switch out to another internal page, then return to page 2
+    fireEvent.click(screen.getByRole('listitem', { name: '2' }))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/configs/page?includeDeleted=false&pageNo=2&pageSize=10'),
+      expect.anything(),
+    ))
+
+    view.rerender(renderPage(false))
+    view.rerender(renderPage(true))
+
+    await waitFor(() => {
+      expect(screen.getByRole('listitem', { name: '2' })).toHaveClass('ant-pagination-item-active')
+    })
   })
 })

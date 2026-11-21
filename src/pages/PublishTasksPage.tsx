@@ -1,4 +1,5 @@
 import {PermissionButton} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   keepPreviousData,
   useMutation,
@@ -22,22 +23,36 @@ import {
   Typography,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { useEffect, useState } from 'react'
-import { ddcApi, ddcPageApi } from '../api/client'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { UNSAFE_LocationContext } from 'react-router-dom'
+import { ddcApi, ddcPageApi, getDdcRequestContext } from '../api/client'
 import { formatAdminError } from '../i18n/errors'
 import { usePageMessages } from '../i18n/AdminI18nProvider'
 import { AdminPageState as PageState } from '../components/page/AdminPageState'
 import type { DdcPublishProcessEvidence, DdcPublishResult, DdcPublishTask } from '../api/types'
 import AdminPageHeader from '../components/page/AdminPageHeader'
 import ScopeSelects, { type ScopeValue } from '../components/scope/ScopeSelects'
-import { usePageState } from '../hooks/usePageState'
-import { buildQuery, formatTime } from '../lib/query'
+import {
+  buildQuery,
+  formatTime,
+  makeWorkbenchSnapshotKey,
+  readWorkbenchSnapshot,
+  syncWorkbenchSnapshotSession,
+  writeWorkbenchSnapshot,
+} from '../lib/query'
 
 const POLL_INTERVAL_MS = 15_000
 
 type PublishTaskFilter = ScopeValue & {
   status: string
   changeId: string
+}
+
+type PublishTasksSnapshot = {
+  draft: PublishTaskFilter
+  submitted: PublishTaskFilter
+  page: { pageNo: number; pageSize: number }
+  scrollTop: number
 }
 
 const emptyFilter: PublishTaskFilter = {
@@ -58,6 +73,18 @@ const statusColor = (status: string): string => {
 
 export default function PublishTasksPage() {
   const { t, locale } = usePageMessages('tianshu.publishTasks')
+  const { embedded, active, activeTabKey } = useEmbeddedWorkbench()
+  const locationContext = useContext(UNSAFE_LocationContext)
+  const searchString = locationContext?.location?.search ?? (typeof window !== 'undefined' ? window.location.search : '')
+  const rawChangeIdParam = new URLSearchParams(searchString).get('changeId')?.trim() ?? ''
+  const changeIdParam = rawChangeIdParam.length > 0 && rawChangeIdParam.length <= 128 ? rawChangeIdParam : ''
+
+  const reqCtx = getDdcRequestContext()
+  const sessionScope = `${reqCtx.tenantId}:${reqCtx.sessionGeneration}`
+  syncWorkbenchSnapshotSession(sessionScope)
+  const snapshotKey = makeWorkbenchSnapshotKey(sessionScope, activeTabKey ?? 'tianshu.page.publishTasks')
+  const savedSnapshot = readWorkbenchSnapshot<PublishTasksSnapshot>(snapshotKey)
+
   const taskStatusLabel = (status: string): string =>
     ['PENDING', 'DISPATCHED', 'PUBLISHING', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED', 'TIMEOUT', 'UNKNOWN'].includes(status)
       ? t(`status.${status}`)
@@ -65,13 +92,72 @@ export default function PublishTasksPage() {
   const { message, modal } = App.useApp()
   const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
-  const pageState = usePageState()
-  const [draft, setDraft] = useState<PublishTaskFilter>({ ...emptyFilter })
-  const [submitted, setSubmitted] = useState<PublishTaskFilter>({
-    ...emptyFilter,
-  })
-  const [detailTask, setDetailTask] = useState<DdcPublishTask | null>(null)
+  const [page, setPage] = useState(() => savedSnapshot?.page ?? { pageNo: 1, pageSize: 10 })
+  const pageState = {
+    page,
+    resetPage: () => setPage((current) => ({ ...current, pageNo: 1 })),
+    onTableChange: (pageNo: number, pageSize: number) => {
+      setPage((current) => ({
+        pageNo: current.pageSize === pageSize ? pageNo : 1,
+        pageSize,
+      }))
+    },
+  }
+  const [draft, setDraft] = useState<PublishTaskFilter>(() =>
+    savedSnapshot?.draft ?? { ...emptyFilter, ...(changeIdParam ? { changeId: changeIdParam } : {}) },
+  )
+  const [submitted, setSubmitted] = useState<PublishTaskFilter>(() =>
+    savedSnapshot?.submitted ?? { ...emptyFilter },
+  )
+  const [detailTask, setDetailTask] = useState<DdcPublishTask | null>(() =>
+    changeIdParam
+      ? ({
+          id: changeIdParam,
+          changeId: changeIdParam,
+          configId: '',
+          bizCode: '',
+          appCode: '',
+          env: '',
+          resourceName: '',
+          targetVersion: 0,
+          publishMode: '',
+          status: 'PENDING',
+          targetCount: 0,
+          ackCount: 0,
+          failedCount: 0,
+          ignoredCount: 0,
+          timeoutCount: 0,
+          attemptCount: 0,
+          operator: '',
+        } as DdcPublishTask)
+      : null,
+  )
   const [lastExpiry, setLastExpiry] = useState(() => Date.now())
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const initialScrollTopRef = useRef(savedSnapshot?.scrollTop ?? 0)
+  const snapshotRef = useRef<PublishTasksSnapshot>({
+    draft,
+    submitted,
+    page,
+    scrollTop: savedSnapshot?.scrollTop ?? 0,
+  })
+
+  useEffect(() => {
+    snapshotRef.current = {
+      draft,
+      submitted,
+      page,
+      scrollTop: snapshotRef.current.scrollTop,
+    }
+    writeWorkbenchSnapshot(snapshotKey, snapshotRef.current)
+  }, [draft, submitted, page, snapshotKey])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (el && initialScrollTopRef.current > 0) {
+      el.scrollTop = initialScrollTopRef.current
+    }
+  }, [])
 
   const tasksQuery = useQuery({
     queryKey: ['tianshu', 'publish-tasks', submitted, pageState.page],
@@ -84,8 +170,8 @@ export default function PublishTasksPage() {
       { signal },
     ),
     placeholderData: keepPreviousData,
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    refetchInterval: active ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: active,
     staleTime: 0,
   })
 
@@ -96,7 +182,7 @@ export default function PublishTasksPage() {
       `/api/v1/tianshu/publish-tasks/${encodeURIComponent(detailTask!.changeId)}`,
       { signal },
     ),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: active && detailTask !== null ? POLL_INTERVAL_MS : false,
     staleTime: 0,
   })
 
@@ -278,74 +364,87 @@ export default function PublishTasksPage() {
     : []
 
   return (
-    <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={(
+    <div
+      ref={containerRef}
+      onScroll={(event) => {
+        snapshotRef.current.scrollTop = Math.max(0, event.currentTarget.scrollTop)
+        writeWorkbenchSnapshot(snapshotKey, snapshotRef.current)
+      }}
+    >
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <ScopeSelects
+              value={draft}
+              onChange={(scope) => setDraft({ ...draft, ...scope })}
+            />
+            <Select
+              aria-label={t('common.status')}
+              allowClear
+              placeholder={t('common.status')}
+              value={draft.status || undefined}
+              options={['PENDING', 'DISPATCHED', 'SUCCESS', 'FAILED', 'TIMEOUT']
+                .map((value) => ({ value, label: taskStatusLabel(value) }))}
+              onChange={(status = '') => setDraft({ ...draft, status })}
+              style={{ width: 150 }}
+            />
+            <Input
+              placeholder={t('fields.changeId')}
+              value={draft.changeId}
+              onChange={(event) => setDraft({
+                ...draft,
+                changeId: event.target.value,
+              })}
+              onPressEnter={applyFilter}
+              style={{ width: 220 }}
+            />
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
           <Button type="primary" onClick={() => { void tasksQuery.refetch() }}>
             {t('actions.refreshPage')}
           </Button>
         )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <PageState
+            loading={tasksQuery.isPending}
+            error={tasksQuery.error}
+            empty={(tasksQuery.data?.records.length ?? 0) === 0}
+            showPartial={tasksQuery.data !== undefined}
+            onRetry={() => { void tasksQuery.refetch() }}
+          >
+            <Table<DdcPublishTask>
+              rowKey={(row) => row.id}
+              columns={columns}
+              dataSource={tasksQuery.data?.records ?? []}
+              loading={tasksQuery.isFetching}
+              size="small"
+              scroll={{ x: 'max-content' }}
+              pagination={false}
+            />
+          </PageState>
+        )}
+        pagination={{
+          mode: 'page',
+          current: tasksQuery.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: tasksQuery.data?.page.pageSize ?? pageState.page.pageSize,
+          total: tasksQuery.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        }}
+        footer={tasksQuery.data ? t('common.total', { total: tasksQuery.data.page.total }) : undefined}
       />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <ScopeSelects
-            value={draft}
-            onChange={(scope) => setDraft({ ...draft, ...scope })}
-          />
-          <Select
-            aria-label={t('common.status')}
-            allowClear
-            placeholder={t('common.status')}
-            value={draft.status || undefined}
-            options={['PENDING', 'DISPATCHED', 'SUCCESS', 'FAILED', 'TIMEOUT']
-              .map((value) => ({ value, label: taskStatusLabel(value) }))}
-            onChange={(status = '') => setDraft({ ...draft, status })}
-            style={{ width: 150 }}
-          />
-          <Input
-            placeholder={t('fields.changeId')}
-            value={draft.changeId}
-            onChange={(event) => setDraft({
-              ...draft,
-              changeId: event.target.value,
-            })}
-            onPressEnter={applyFilter}
-            style={{ width: 220 }}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        <PageState
-          loading={tasksQuery.isPending}
-          error={tasksQuery.error}
-          empty={(tasksQuery.data?.records.length ?? 0) === 0}
-          showPartial={tasksQuery.data !== undefined}
-          onRetry={() => { void tasksQuery.refetch() }}
-        >
-          <Table<DdcPublishTask>
-            rowKey={(row) => row.id}
-            columns={columns}
-            dataSource={tasksQuery.data?.records ?? []}
-            loading={tasksQuery.isFetching}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            pagination={{
-              current: tasksQuery.data?.page.pageNo ?? pageState.page.pageNo,
-              pageSize: tasksQuery.data?.page.pageSize
-                ?? pageState.page.pageSize,
-              total: tasksQuery.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: pageState.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
       <Modal
         open={detailTask !== null}
         title={t('detail.title', { changeId: detailTask?.changeId ?? '' })}

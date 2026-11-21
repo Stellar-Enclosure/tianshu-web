@@ -1,6 +1,12 @@
-import {act, fireEvent, screen, waitFor} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {QueryClientProvider} from '@tanstack/react-query'
+import {App as AntdApp} from 'antd'
+import {MemoryRouter} from 'react-router-dom'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {EmbeddedWorkbench, type WorkbenchHost} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {setDdcUnauthorizedHandler} from '../api/client'
+import {clearWorkbenchSnapshots} from '../lib/query'
+import {createDdcQueryClient} from '../query/queryClient'
 import {renderWithQueryClient} from '../test/renderWithQueryClient'
 import PublishTasksPage from './PublishTasksPage'
 
@@ -100,6 +106,7 @@ const mockEndpoints = (details: unknown = task): void => {
 
 describe('PublishTasksPage', () => {
   beforeEach(() => {
+    clearWorkbenchSnapshots()
     setDdcUnauthorizedHandler(() => {})
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -212,5 +219,105 @@ describe('PublishTasksPage', () => {
     fireEvent.click(retryButtons[retryButtons.length - 1])
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input, init]) =>
       String(input).includes('/retry') && init?.method === 'POST')).toBe(true))
+  })
+
+  it('locates a deep-linked ?changeId= task via detail API, restores draft/submitted/scroll in four-region layout, and pauses 15s polling when suspended', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let pageCalls = 0
+    vi.mocked(fetch).mockImplementation((input) => {
+      const endpoint = new URL(String(input))
+      const url = endpoint.pathname + endpoint.search
+      if (url.includes('/publish-tasks/page')) {
+        pageCalls += 1
+        return Promise.resolve(jsonResponse(pageRecord(1)))
+      }
+      if (url.endsWith('/publish-tasks/change-deep')) {
+        return Promise.resolve(jsonResponse(record({
+          ...task,
+          id: 't-deep',
+          changeId: 'change-deep',
+          errorMessage: 'deep link failure',
+        })))
+      }
+      return Promise.resolve(jsonResponse(record([])))
+    })
+
+    let attachedPort: Parameters<WorkbenchHost['attach']>[0] | null = null
+    const host: WorkbenchHost = {
+      attach: (port) => {
+        attachedPort = port
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const queryClient = createDdcQueryClient()
+
+    const ui = (visible: boolean) => (
+      <AntdApp>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/publish-tasks?changeId=change-deep']}>
+            <EmbeddedWorkbench
+              host={host}
+              status="ready"
+              pages={[{
+                pageId: 'tianshu.page.publishTasks',
+                pattern: '/publish-tasks',
+                label: '发布任务',
+                groupKey: 'runtime',
+                groupLabel: '运行状态',
+                identityParams: [],
+                queryKeys: ['changeId'],
+              }]}
+              onPresent={async () => ({ ok: true })}
+            >
+              {visible ? <PublishTasksPage /> : <div>other tab</div>}
+            </EmbeddedWorkbench>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AntdApp>
+    )
+
+    const view = render(ui(true))
+    expect(document.querySelector('[data-region="query"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="toolbar"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="table"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-region="pagination"]')).toBeInTheDocument()
+
+    // Deep-linked changeId opens detail modal via existing detail API without searching full list
+    expect(await screen.findByText('deep link failure')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Change ID')).toHaveValue('change-deep')
+
+    // Activate tab via present(show), edit draft filter and scroll position, then suspend
+    await act(async () => {
+      await attachedPort?.present({
+        mode: 'show',
+        navigationId: 1,
+        tabKey: '["tianshu","tianshu.page.publishTasks"]',
+        target: { path: '/publish-tasks', search: '?changeId=change-deep' },
+        signal: new AbortController().signal,
+      })
+    })
+    fireEvent.change(screen.getByPlaceholderText('Change ID'), { target: { value: 'draft-id-only' } })
+    const callsWhileActive = pageCalls
+
+    await act(async () => {
+      await attachedPort?.present({
+        mode: 'suspend',
+        navigationId: 2,
+        signal: new AbortController().signal,
+      })
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    expect(pageCalls).toBe(callsWhileActive)
+
+    // Unmount (switch to another internal route) and remount restores draft filter
+    view.rerender(ui(false))
+    view.rerender(ui(true))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Change ID')).toHaveValue('draft-id-only')
+    })
   })
 })
