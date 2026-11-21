@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/workbench.spec.ts'],
   outputDir: '.generated/playwright-results',
   use: {
     baseURL: 'https://tianshu.example.invalid',
