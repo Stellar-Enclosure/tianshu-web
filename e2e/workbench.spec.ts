@@ -374,21 +374,7 @@ async function installWorkbenchRoutes(
       return
     }
 
-    // Serve real Portal static Vite assets
-    if (parsedUrl.origin === fixture.portal.origin) {
-      const asset = resolveStaticAsset(fixture.portal.distDir, fixture.portal.basePath, parsedUrl.pathname)
-      if (asset) {
-        await route.fulfill({
-          status: 200,
-          contentType: asset.contentType,
-          headers: corsHeaders,
-          body: readFileSync(asset.filePath),
-        })
-        return
-      }
-    }
-
-    // Serve real child app Vite assets
+    // Serve real child app Vite assets first so same-origin subpaths (/children/<app>/) win over Portal's '/' SPA fallback
     for (const app of allApps) {
       if (parsedUrl.origin === app.origin) {
         const asset = resolveStaticAsset(app.distDir, app.basePath, parsedUrl.pathname)
@@ -401,6 +387,20 @@ async function installWorkbenchRoutes(
           })
           return
         }
+      }
+    }
+
+    // Serve real Portal static Vite assets
+    if (parsedUrl.origin === fixture.portal.origin) {
+      const asset = resolveStaticAsset(fixture.portal.distDir, fixture.portal.basePath, parsedUrl.pathname)
+      if (asset) {
+        await route.fulfill({
+          status: 200,
+          contentType: asset.contentType,
+          headers: corsHeaders,
+          body: readFileSync(asset.filePath),
+        })
+        return
       }
     }
 
@@ -446,7 +446,7 @@ test.describe('Cross-repo Portal workbench browser verification (Step 24)', () =
     await page.getByRole('button', { name: /进入配置发布/ }).click()
     await expect(page.getByTestId('wujie-host-tianshu')).toBeVisible({ timeout: 15000 })
 
-    // Browser Back/Forward synchronization between /xingyuan/tianshu/governance/configs and /agent
+    // Browser Back/Forward synchronization between /xingyuan/tianshu/publish-tasks and /agent
     await page.goBack()
     await expect(page.getByTestId('agent-page')).toBeVisible()
     await page.goForward()

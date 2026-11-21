@@ -130,19 +130,37 @@ function WorkbenchNavigationSync({
   return null
 }
 
+type TranslateFn = (key: string, fallback?: string) => string
+
+function TianshuTranslatorSync({
+  onTranslate,
+}: {
+  onTranslate: (fn: TranslateFn) => void
+}) {
+  const {t} = usePageMessages('common')
+  useEffect(() => {
+    onTranslate((key, fallback) => {
+      const value = t(key)
+      return value && value !== key ? value : fallback ?? key
+    })
+  }, [onTranslate, t])
+  return null
+}
+
 function TianshuWorkbenchBridge({
   workbenchHost,
   onPresent,
   requestNavRef,
+  translate,
   children,
 }: {
   workbenchHost: WorkbenchHost
   onPresent: (presentation: Presentation, permission: ReturnType<typeof usePermission>, authorized: boolean) => Promise<BridgeResult> | BridgeResult
   requestNavRef: {current: NavigationRequestFn | null}
+  translate?: TranslateFn
   children: ReactNode
 }) {
   const {authorization, authorized, loading, error} = useAuth()
-  const {t} = usePageMessages('common')
   const permission = usePermission(authorization?.snapshot ?? null, authorization?.binding ?? null)
 
   const status: AppCatalogStatus = loading
@@ -155,11 +173,8 @@ function TianshuWorkbenchBridge({
 
   const pages = useMemo(() => {
     if (status !== 'ready') return []
-    return buildTianshuCatalogPages(permission, (key, fallback) => {
-      const value = t(key)
-      return value && value !== key ? value : fallback ?? key
-    })
-  }, [permission, status, t])
+    return buildTianshuCatalogPages(permission, translate)
+  }, [permission, status, translate])
 
   const handlePresent = useCallback(
     (presentation: Presentation) => onPresent(presentation, permission, authorized),
@@ -174,6 +189,39 @@ function TianshuWorkbenchBridge({
   )
 }
 
+function TianshuWorkbenchShell({
+  workbenchHost,
+  onPresent,
+  requestNavRef,
+}: {
+  workbenchHost: WorkbenchHost
+  onPresent: (presentation: Presentation, permission: ReturnType<typeof usePermission>, authorized: boolean) => Promise<BridgeResult> | BridgeResult
+  requestNavRef: {current: NavigationRequestFn | null}
+}) {
+  const [translate, setTranslate] = useState<TranslateFn | undefined>(undefined)
+  const handleTranslate = useCallback((fn: TranslateFn) => {
+    setTranslate(() => fn)
+  }, [])
+
+  return (
+    <AuthProvider>
+      <TianshuWorkbenchBridge
+        workbenchHost={workbenchHost}
+        onPresent={onPresent}
+        requestNavRef={requestNavRef}
+        translate={translate}
+      >
+        <FieldCatalogProvider><AdminI18nProvider>
+          <TianshuTranslatorSync onTranslate={handleTranslate} />
+          <RequireAuth>
+            <AdminLayout />
+          </RequireAuth>
+        </AdminI18nProvider></FieldCatalogProvider>
+      </TianshuWorkbenchBridge>
+    </AuthProvider>
+  )
+}
+
 const createWorkbenchRoutes = (
   workbenchHost: WorkbenchHost,
   onPresent: (presentation: Presentation, permission: ReturnType<typeof usePermission>, authorized: boolean) => Promise<BridgeResult> | BridgeResult,
@@ -184,19 +232,11 @@ const createWorkbenchRoutes = (
   {
     path: '/',
     element: (
-      <AuthProvider>
-        <FieldCatalogProvider><AdminI18nProvider>
-          <TianshuWorkbenchBridge
-            workbenchHost={workbenchHost}
-            onPresent={onPresent}
-            requestNavRef={requestNavRef}
-          >
-            <RequireAuth>
-              <AdminLayout />
-            </RequireAuth>
-          </TianshuWorkbenchBridge>
-        </AdminI18nProvider></FieldCatalogProvider>
-      </AuthProvider>
+      <TianshuWorkbenchShell
+        workbenchHost={workbenchHost}
+        onPresent={onPresent}
+        requestNavRef={requestNavRef}
+      />
     ),
     children: [
       {path: '__workbench/idle', element: null},
