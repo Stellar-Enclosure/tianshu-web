@@ -1,7 +1,8 @@
 import {Link} from 'react-router-dom'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Input, Select, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Descriptions, Input, Select, Space, Table, Tag, Typography} from 'antd'
 import type {TableColumnsType} from 'antd'
 import {useAuth} from '../auth/AuthContext'
 import {getResourceMetadata, type ResourceMetadata, type ResourceMetadataQuery} from '../api/resourceMetadata'
@@ -13,6 +14,7 @@ import {formatAdminError} from '../i18n/errors'
 
 export default function ResourceMetadataPage() {
   const {authorization} = useAuth()
+  const {embedded} = useEmbeddedWorkbench()
   const {t} = usePageMessages('tianshu.metadata')
   const [filters, setFilters] = useState<ResourceMetadataQuery>(() => ({...currentCatalogTarget(authorization!.binding), pageNo: 1, pageSize: 20}))
   const [query, setQuery] = useState(filters)
@@ -31,39 +33,56 @@ export default function ResourceMetadataPage() {
     })}`}>{row.pageCode}/{row.labelKey}</Link>},
   ]
   return <Space orientation="vertical" style={{width: '100%'}} size="large">
-    <AdminPageHeader title={t('metadata.title')} description={t('metadata.description')} />
-    <Card><Space orientation="vertical" style={{width: '100%'}}>
-      <ScopeSelects value={filters} onChange={scope => setFilters({...filters, ...scope})} />
-      <CatalogTargetInputs value={filters} onChange={target => setFilters({...filters, ...target})} />
-      <Space wrap>
-        <Select aria-label={t('metadata.type')} placeholder={t('metadata.type')} allowClear style={{minWidth: 150}}
-          value={filters.resourceType} onChange={resourceType => setFilters({...filters, resourceType})}
-          options={['APP', 'MENU', 'PAGE', 'BUTTON', 'API', 'METHOD', 'FIELD'].map(value => ({value, label: value}))} />
-        <Select aria-label={t('metadata.kind')} placeholder={t('metadata.kind')} allowClear style={{minWidth: 150}}
-          value={filters.metadataKind} onChange={metadataKind => setFilters({...filters, metadataKind})}
-          options={['RESOURCE', 'PERMISSION'].map(value => ({value, label: value}))} />
-        <Select aria-label={t('metadata.lifecycle')} placeholder={t('metadata.lifecycle')} allowClear style={{minWidth: 150}}
-          value={filters.lifecycle} onChange={lifecycle => setFilters({...filters, lifecycle})}
-          options={['ACTIVE', 'DEPRECATED'].map(value => ({value, label: value}))} />
-        <Input aria-label={t('metadata.producer')} placeholder={t('metadata.producer')} value={filters.producerId}
-          onChange={event => setFilters({...filters, producerId: event.target.value})} />
-        <Input aria-label={t('metadata.permissions')} placeholder={t('metadata.permissions')} value={filters.permissionCode}
-          onChange={event => setFilters({...filters, permissionCode: event.target.value})} />
-        <Input.Search aria-label={t('metadata.search')} placeholder={t('metadata.search')} value={filters.query}
-          onChange={event => setFilters({...filters, query: event.target.value})} onSearch={() => setQuery({...filters, pageNo: 1})} />
-        <Button type="primary" onClick={() => setQuery({...filters, pageNo: 1})}>{t('metadata.search')}</Button>
-      </Space>
-    </Space></Card>
-    {result.error && <Alert type="error" title={formatAdminError(result.error, t)} />}
-    <Table<ResourceMetadata> rowKey={row => `${row.producerId}:${row.metadataKind}:${row.definitionKey}`}
-      columns={columns} dataSource={result.data?.records ?? []} loading={result.isFetching}
-      pagination={{current: query.pageNo, pageSize: 20, total: result.data?.page.total ?? 0, showSizeChanger: false,
-        onChange: pageNo => setQuery({...query, pageNo})}}
-      expandable={{expandedRowRender: row => <Descriptions column={1} size="small" bordered items={[
-        {key: 'scope', label: t('catalog.scopeId'), children: row.catalogScope.catalogScopeId},
-        {key: 'version', label: t('catalog.version'), children: row.catalogActivationVersion},
-        {key: 'source', label: t('metadata.sourceVersion'), children: row.sourceVersion},
-        {key: 'policy', label: t('metadata.policy'), children: <pre style={{whiteSpace: 'pre-wrap'}}>{JSON.stringify({target: row.target, policy: row.policy, i18nRefs: row.i18nRefs}, null, 2)}</pre>},
-      ]} />}} />
+    {!embedded && <AdminPageHeader title={t('metadata.title')} description={t('metadata.description')} />}
+    <WorkspaceList
+      ariaLabel={t('metadata.title')}
+      filters={(
+        <Space orientation="vertical" style={{width: '100%'}}>
+          <ScopeSelects value={filters} onChange={scope => setFilters({...filters, ...scope})} />
+          <CatalogTargetInputs value={filters} onChange={target => setFilters({...filters, ...target})} />
+          <Space wrap>
+            <Select aria-label={t('metadata.type')} placeholder={t('metadata.type')} allowClear style={{minWidth: 150}}
+              value={filters.resourceType} onChange={resourceType => setFilters({...filters, resourceType})}
+              options={['APP', 'MENU', 'PAGE', 'BUTTON', 'API', 'METHOD', 'FIELD'].map(value => ({value, label: value}))} />
+            <Select aria-label={t('metadata.kind')} placeholder={t('metadata.kind')} allowClear style={{minWidth: 150}}
+              value={filters.metadataKind} onChange={metadataKind => setFilters({...filters, metadataKind})}
+              options={['RESOURCE', 'PERMISSION'].map(value => ({value, label: value}))} />
+            <Select aria-label={t('metadata.lifecycle')} placeholder={t('metadata.lifecycle')} allowClear style={{minWidth: 150}}
+              value={filters.lifecycle} onChange={lifecycle => setFilters({...filters, lifecycle})}
+              options={['ACTIVE', 'DEPRECATED'].map(value => ({value, label: value}))} />
+            <Input aria-label={t('metadata.producer')} placeholder={t('metadata.producer')} value={filters.producerId}
+              onChange={event => setFilters({...filters, producerId: event.target.value})} />
+            <Input aria-label={t('metadata.permissions')} placeholder={t('metadata.permissions')} value={filters.permissionCode}
+              onChange={event => setFilters({...filters, permissionCode: event.target.value})} />
+            <Input.Search aria-label={t('metadata.search')} placeholder={t('metadata.search')} value={filters.query}
+              onChange={event => setFilters({...filters, query: event.target.value})} onSearch={() => setQuery({...filters, pageNo: 1})} />
+            <Button type="primary" onClick={() => setQuery({...filters, pageNo: 1})}>{t('metadata.search')}</Button>
+          </Space>
+        </Space>
+      )}
+      pageState={{loading: false, error: undefined, empty: false}}
+      table={(
+        <>
+          {result.error && <Alert type="error" title={formatAdminError(result.error, t)} />}
+          <Table<ResourceMetadata> rowKey={row => `${row.producerId}:${row.metadataKind}:${row.definitionKey}`}
+            columns={columns} dataSource={result.data?.records ?? []} loading={result.isFetching}
+            pagination={false}
+            expandable={{expandedRowRender: row => <Descriptions column={1} size="small" bordered items={[
+              {key: 'scope', label: t('catalog.scopeId'), children: row.catalogScope.catalogScopeId},
+              {key: 'version', label: t('catalog.version'), children: row.catalogActivationVersion},
+              {key: 'source', label: t('metadata.sourceVersion'), children: row.sourceVersion},
+              {key: 'policy', label: t('metadata.policy'), children: <pre style={{whiteSpace: 'pre-wrap'}}>{JSON.stringify({target: row.target, policy: row.policy, i18nRefs: row.i18nRefs}, null, 2)}</pre>},
+            ]} />}} />
+        </>
+      )}
+      pagination={{
+        mode: 'page',
+        current: query.pageNo ?? 1,
+        pageSize: 20,
+        total: result.data?.page.total ?? 0,
+        showSizeChanger: false,
+        onChange: pageNo => setQuery({...query, pageNo}),
+      }}
+    />
   </Space>
 }

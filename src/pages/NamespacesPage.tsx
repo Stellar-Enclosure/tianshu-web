@@ -1,5 +1,6 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   keepPreviousData,
   useMutation,
@@ -10,7 +11,6 @@ import {
   App,
   Alert,
   Button,
-  Card,
   Drawer,
   Form,
   Grid,
@@ -56,6 +56,7 @@ type NamespaceFormValues = {
 
 export default function NamespacesPage() {
   const { t, locale } = usePageMessages('tianshu.namespaces')
+  const { embedded } = useEmbeddedWorkbench()
   const fieldsWritable = useDdcWritable('DdcNamespaceBO')
   const listView = useNamespaceListView()
   const mayMutate = useDdcPermission('tianshu.button.NamespacesPage.write') && fieldsWritable
@@ -349,68 +350,92 @@ export default function NamespacesPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={(
-          <PermissionButton resourceKey="tianshu.button.NamespacesPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>
-        )}
-      />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <span style={{ width: 220, display: 'inline-block' }}>
-            <BizSelect
-              value={draft.bizCode}
-              onChange={(bizCode) => setDraft({ ...draft, bizCode })}
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <span style={{ width: 220, display: 'inline-block' }}>
+              <BizSelect
+                value={draft.bizCode}
+                onChange={(bizCode) => setDraft({ ...draft, bizCode })}
+              />
+            </span>
+            <Input
+              placeholder={t('filters.keyword')}
+              value={draft.keyword}
+              onChange={(event) => setDraft({
+                ...draft,
+                keyword: event.target.value,
+              })}
+              onPressEnter={applyFilter}
+              style={{ width: 220 }}
             />
-          </span>
-          <Input
-            placeholder={t('filters.keyword')}
-            value={draft.keyword}
-            onChange={(event) => setDraft({
-              ...draft,
-              keyword: event.target.value,
-            })}
-            onPressEnter={applyFilter}
-            style={{ width: 220 }}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        {listView.error && <Alert type="error" title={formatAdminError(listView.error, t)} />}
-        {listView.managementError && <Alert type="error" title={formatAdminError(listView.managementError, t)} />}
-        {listView.view && <NamespaceListControls view={listView.view} managementView={listView.managementView}
-          maySystem={listView.maySystem} mayPersonal={listView.mayPersonal} mayExport={listView.mayExport}
-          selectionWritable={listView.selectionWritable}
-          dataUnavailable={query.isPending || query.isFetching || !!query.error}
-          filter={submitted} page={pageState.page} />}
-        <PageState
-          loading={query.isPending}
-          error={query.error}
-          empty={(query.data?.records.length ?? 0) === 0}
-          onRetry={() => { void query.refetch() }}
-        >
-          <Table<DdcNamespace>
-            rowKey={(row) => row.id}
-            columns={visibleColumns}
-            dataSource={query.data?.records ?? []}
-            loading={query.isFetching || listView.loading}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            pagination={{
-              current: query.data?.page.pageNo ?? pageState.page.pageNo,
-              pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
-              total: query.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: pageState.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
+          <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Space wrap>
+              {listView.view && (
+                <NamespaceListControls
+                  view={listView.view}
+                  managementView={listView.managementView}
+                  maySystem={listView.maySystem}
+                  mayPersonal={listView.mayPersonal}
+                  mayExport={listView.mayExport}
+                  selectionWritable={listView.selectionWritable}
+                  dataUnavailable={query.isPending || query.isFetching || !!query.error}
+                  filter={submitted}
+                  page={pageState.page}
+                />
+              )}
+            </Space>
+            <PermissionButton resourceKey="tianshu.button.NamespacesPage.write" type="primary" onClick={openCreate}>
+              {t('actions.create')}
+            </PermissionButton>
+          </Space>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <>
+            {listView.error && <Alert type="error" title={formatAdminError(listView.error, t)} />}
+            {listView.managementError && <Alert type="error" title={formatAdminError(listView.managementError, t)} />}
+            <PageState
+              loading={query.isPending}
+              error={query.error}
+              empty={(query.data?.records.length ?? 0) === 0}
+              onRetry={() => { void query.refetch() }}
+            >
+              <Table<DdcNamespace>
+                rowKey={(row) => row.id}
+                columns={visibleColumns}
+                dataSource={query.data?.records ?? []}
+                loading={query.isFetching || listView.loading}
+                size="small"
+                scroll={{ x: 'max-content' }}
+                pagination={false}
+              />
+            </PageState>
+          </>
+        )}
+        pagination={{
+          mode: 'page',
+          current: query.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
+          total: query.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        }}
+        footer={query.data ? t('common.total', { total: query.data.page.total }) : undefined}
+      />
       <Modal
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}

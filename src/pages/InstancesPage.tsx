@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, Space, Table, Tag, Typography } from 'antd'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
+import { Alert, Button, Space, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useEffect, useState } from 'react'
 import { ddcPageApi } from '../api/client'
@@ -32,6 +33,7 @@ const observationStatus = (row: DdcWorkloadObservation, now: number): DdcWorkloa
 
 export default function InstancesPage() {
   const { t, locale } = usePageMessages('tianshu.instances')
+  const { embedded } = useEmbeddedWorkbench()
   const pageState = usePageState()
   const [draft, setDraft] = useState<ScopeValue>({ ...emptyScope })
   const [submitted, setSubmitted] = useState<ScopeValue | null>(null)
@@ -151,38 +153,44 @@ export default function InstancesPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={(
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <>
+            <Space wrap>
+              <ScopeSelects
+                value={draft}
+                onChange={(scope) => {
+                  setScopeError(false)
+                  setDraft(scope)
+                }}
+              />
+              <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+              <Button onClick={resetFilter}>{t('common.reset')}</Button>
+            </Space>
+            {scopeError && (
+              <Alert
+                className="section-row"
+                type="warning"
+                showIcon
+                message={t('validation.scopeRequired')}
+              />
+            )}
+          </>
+        )}
+        toolbar={(
           <Button disabled={submitted === null} loading={instancesQuery.isFetching} onClick={() => { void instancesQuery.refetch() }}>
             {t('actions.refreshPage')}
           </Button>
         )}
-      />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <ScopeSelects
-            value={draft}
-            onChange={(scope) => {
-              setScopeError(false)
-              setDraft(scope)
-            }}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-        {scopeError && (
-          <Alert
-            className="section-row"
-            type="warning"
-            showIcon
-            message={t('validation.scopeRequired')}
-          />
-        )}
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        {submitted === null ? (
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={submitted === null ? (
           <Typography.Text type="secondary">{t('empty.selectScope')}</Typography.Text>
         ) : (
           <PageState
@@ -200,19 +208,21 @@ export default function InstancesPage() {
               loading={instancesQuery.isFetching}
               size="small"
               scroll={{ x: 'max-content' }}
-              pagination={{
-                current: instancesQuery.data?.page.pageNo ?? pageState.page.pageNo,
-                pageSize: instancesQuery.data?.page.pageSize ?? pageState.page.pageSize,
-                total: instancesQuery.data?.page.total ?? 0,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50],
-                showTotal: (total) => t('common.total', { total }),
-                onChange: pageState.onTableChange,
-              }}
+              pagination={false}
             />
           </PageState>
         )}
-      </Card>
+        pagination={submitted !== null ? {
+          mode: 'page',
+          current: instancesQuery.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: instancesQuery.data?.page.pageSize ?? pageState.page.pageSize,
+          total: instancesQuery.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        } : undefined}
+        footer={submitted !== null && instancesQuery.data ? t('common.total', { total: instancesQuery.data.page.total }) : undefined}
+      />
     </div>
   )
 }

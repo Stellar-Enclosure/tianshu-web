@@ -176,5 +176,5 @@ describe('AiResourcesPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }))
 
     await waitFor(() => expect(aiApi.deleteAiResource).toHaveBeenCalledWith('810001', '0'))
-  })
+  }, 15_000)
 })

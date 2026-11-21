@@ -1,4 +1,5 @@
 import {PermissionButton} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   keepPreviousData,
   useMutation,
@@ -43,6 +44,7 @@ const scopeReady = (scope: ScopeValue): boolean =>
 
 export default function CachePage() {
   const { t } = usePageMessages('tianshu.cache')
+  const { embedded } = useEmbeddedWorkbench()
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const pageState = usePageState()
@@ -155,45 +157,53 @@ export default function CachePage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-      />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <ScopeSelects value={draft} onChange={setDraft} />
-          <Button
-            type="primary"
-            loading={checkQuery.isFetching}
-            onClick={check}
-          >
-            {t('actions.check')}
-          </Button>
-          <PermissionButton resourceKey="tianshu.button.CachePage.cache"
-            danger
-            loading={rebuildMutation.isPending}
-            onClick={confirmRebuild}
-          >
-            {t('actions.rebuild')}
-          </PermissionButton>
-        </Space>
-      </Card>
-      {submitted !== null && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col xs={24} sm={12}>
-            <Card size="small">
-              <Statistic title={t('stats.matched')} value={matched} />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12}>
-            <Card size="small">
-              <Statistic title={t('stats.mismatched')} value={mismatched} />
-            </Card>
-          </Col>
-        </Row>
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
       )}
-      <Card size="small" title={t('list.title')}>
-        {submitted === null ? (
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <ScopeSelects value={draft} onChange={setDraft} />
+            <Button
+              type="primary"
+              loading={checkQuery.isFetching}
+              onClick={check}
+            >
+              {t('actions.check')}
+            </Button>
+          </Space>
+        )}
+        toolbar={(
+          <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+            <PermissionButton resourceKey="tianshu.button.CachePage.cache"
+              danger
+              loading={rebuildMutation.isPending}
+              onClick={confirmRebuild}
+            >
+              {t('actions.rebuild')}
+            </PermissionButton>
+            {submitted !== null && (
+              <Row gutter={[16, 16]}>
+                <Col xs={12}>
+                  <Card size="small">
+                    <Statistic title={t('stats.matched')} value={matched} />
+                  </Card>
+                </Col>
+                <Col xs={12}>
+                  <Card size="small">
+                    <Statistic title={t('stats.mismatched')} value={mismatched} />
+                  </Card>
+                </Col>
+              </Row>
+            )}
+          </Space>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={submitted === null ? (
           <Typography.Text type="secondary">
             {t('empty.selectScope')}
           </Typography.Text>
@@ -211,21 +221,21 @@ export default function CachePage() {
               loading={checkQuery.isFetching}
               size="small"
               scroll={{ x: 'max-content' }}
-              pagination={{
-                current: checkQuery.data?.page.pageNo
-                  ?? pageState.page.pageNo,
-                pageSize: checkQuery.data?.page.pageSize
-                  ?? pageState.page.pageSize,
-                total: checkQuery.data?.page.total ?? 0,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50],
-                showTotal: (total) => t('common.total', { total }),
-                onChange: pageState.onTableChange,
-              }}
+              pagination={false}
             />
           </PageState>
         )}
-      </Card>
+        pagination={submitted !== null ? {
+          mode: 'page',
+          current: checkQuery.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: checkQuery.data?.page.pageSize ?? pageState.page.pageSize,
+          total: checkQuery.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        } : undefined}
+        footer={submitted !== null && checkQuery.data ? t('common.total', { total: checkQuery.data.page.total }) : undefined}
+      />
     </div>
   )
 }

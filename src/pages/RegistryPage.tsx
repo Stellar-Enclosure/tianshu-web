@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   Alert,
   Button,
@@ -27,6 +28,7 @@ import { emptyScope } from '../lib/scopeDefaults'
 
 export default function RegistryPage() {
   const { t, locale } = usePageMessages('tianshu.registry')
+  const { embedded } = useEmbeddedWorkbench()
   const label = {
     source: t('observation.source'),
     ready: t('observation.ready'),
@@ -198,61 +200,71 @@ export default function RegistryPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={label.source}
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={label.source}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <ScopeSelects value={draft} onChange={setDraft} />
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
+          <Row gutter={[16, 16]} style={{ width: '100%' }}>
+            <Col xs={24} sm={12}>
+              <Card size="small">
+                <Statistic
+                  title={t('stats.services')}
+                  value={servicesQuery.error ? '—' : servicesQuery.data?.page.total ?? '—'}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Card size="small">
+                <Statistic title={label.ready} value={instancesQuery.error || invalidEvidence || !endpointRows ? '—' :
+                  currentRows.filter(row => row.metadata?.ready === 'true').length} />
+              </Card>
+            </Col>
+          </Row>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <div className="tianshu-admin-table-card">
+            <PageState
+              loading={servicesQuery.isPending}
+              error={observationError(servicesQuery.error)}
+              empty={(servicesQuery.data?.records.length ?? 0) === 0}
+              onRetry={() => { void servicesQuery.refetch() }}
+            >
+              <Table<RegistryService>
+                rowKey={(row) => row.serviceId}
+                columns={serviceColumns}
+                dataSource={servicesQuery.data?.records ?? []}
+                loading={servicesQuery.isFetching}
+                size="small"
+                scroll={{ x: 'max-content' }}
+                pagination={false}
+              />
+            </PageState>
+          </div>
+        )}
+        pagination={{
+          mode: 'page',
+          current: servicesQuery.data?.page.pageNo ?? servicePage.page.pageNo,
+          pageSize: servicesQuery.data?.page.pageSize ?? servicePage.page.pageSize,
+          total: servicesQuery.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: servicePage.onTableChange,
+        }}
+        footer={servicesQuery.data ? t('common.total', { total: servicesQuery.data.page.total }) : undefined}
       />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <ScopeSelects value={draft} onChange={setDraft} />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12}>
-          <Card size="small">
-            <Statistic
-              title={t('stats.services')}
-              value={servicesQuery.error ? '—' : servicesQuery.data?.page.total ?? '—'}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12}>
-          <Card size="small">
-            <Statistic title={label.ready} value={instancesQuery.error || invalidEvidence || !endpointRows ? '—' :
-              currentRows.filter(row => row.metadata?.ready === 'true').length} />
-          </Card>
-        </Col>
-      </Row>
-      <Card className="tianshu-admin-table-card" size="small" title={t('list.title')}>
-        <PageState
-          loading={servicesQuery.isPending}
-          error={observationError(servicesQuery.error)}
-          empty={(servicesQuery.data?.records.length ?? 0) === 0}
-          onRetry={() => { void servicesQuery.refetch() }}
-        >
-          <Table<RegistryService>
-            rowKey={(row) => row.serviceId}
-            columns={serviceColumns}
-            dataSource={servicesQuery.data?.records ?? []}
-            loading={servicesQuery.isFetching}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            pagination={{
-              current: servicesQuery.data?.page.pageNo
-                ?? servicePage.page.pageNo,
-              pageSize: servicesQuery.data?.page.pageSize
-                ?? servicePage.page.pageSize,
-              total: servicesQuery.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: servicePage.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
       <Drawer
         open={selectedService !== null}
         title={t('instances.title', { name: selectedService?.serviceName ?? '' })}

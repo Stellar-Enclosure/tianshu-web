@@ -1,4 +1,5 @@
 import {CatalogTargetInputs, currentCatalogTarget} from '../components/scope/CatalogTargetInputs'
+import {useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useDdcPermission} from '../permissions/access'
 import {useAdminI18n, usePageMessages} from '../i18n/AdminI18nProvider'
 import {formatAdminError} from '../i18n/errors'
@@ -19,6 +20,7 @@ const scopeIsComplete = (scope: ScopeValue): boolean => Object.values(scope).eve
 
 function I18nPageContent() {
   const {t} = usePageMessages('tianshu.i18n')
+  const {embedded} = useEmbeddedWorkbench()
   const {authorization} = useAuth()
   const mayWrite = useDdcPermission('tianshu.button.I18nPageEditor.write')
   const {bootstrap, refresh} = useAdminI18n()
@@ -71,7 +73,7 @@ function I18nPageContent() {
 
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <AdminPageHeader title={t('title')} description={t('description')} />
+      {!embedded && <AdminPageHeader title={t('title')} description={t('description')} />}
       <Card title={t('admin.title')}>
         <Space direction="vertical">
           <Typography.Text type="secondary">{t('admin.description')}</Typography.Text>

@@ -1,4 +1,5 @@
 import { PermissionButton } from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { defineMessages } from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Input, Select, Space, Table, Tag } from 'antd'
@@ -18,6 +19,7 @@ export const siCatalogMessages = defineMessages([
 
 export default function SiCatalogPage() {
   const { t } = usePageMessages('tianshu.si')
+  const { embedded } = useEmbeddedWorkbench()
   const { message } = App.useApp()
   const navigate = useNavigate()
   const [envCode, setEnvCode] = useState<string | undefined>(undefined)
@@ -109,10 +111,68 @@ export default function SiCatalogPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('si.catalog.title')}
-        description={t('si.catalog.subtitle')}
-        extra={
+      {!embedded && (
+        <AdminPageHeader
+          title={t('si.catalog.title')}
+          description={t('si.catalog.subtitle')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('si.catalog.title')}
+        filters={(
+          <>
+            <Space wrap style={{ width: '100%', marginBottom: 12 }}>
+              <Select
+                allowClear
+                placeholder={t('si.catalog.envPlaceholder')}
+                style={{ width: 120 }}
+                value={envCode}
+                onChange={setEnvCode}
+                options={['dev', 'test', 'staging', 'prod'].map((env) => ({ value: env, label: env }))}
+              />
+              <Select
+                allowClear
+                placeholder={t('si.catalog.kindPlaceholder')}
+                style={{ width: 120 }}
+                value={kind}
+                onChange={setKind}
+                options={['AGENT', 'MCP', 'PROMPT', 'SKILL'].map((k) => ({ value: k, label: k }))}
+              />
+              <Select
+                allowClear
+                placeholder={t('common.status')}
+                style={{ width: 140 }}
+                value={lifecycleStatus}
+                onChange={setLifecycleStatus}
+                options={['DRAFT', 'PUBLISHED', 'DEPRECATED', 'ARCHIVED'].map((s) => ({ value: s, label: s }))}
+              />
+              <Input
+                placeholder={t('si.catalog.keywordFilterPlaceholder')}
+                style={{ width: 220 }}
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </Space>
+
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                data-testid="si-semantic-query-input"
+                placeholder={t('si.catalog.searchPlaceholder')}
+                value={semanticQuery}
+                onChange={(e) => setSemanticQuery(e.target.value)}
+              />
+              <Button
+                type="primary"
+                data-testid="si-semantic-search-btn"
+                loading={semanticMutation.isPending}
+                onClick={() => semanticQuery.trim() && semanticMutation.mutate(semanticQuery.trim())}
+              >
+                {t('si.catalog.semanticSearchBtn')}
+              </Button>
+            </Space.Compact>
+          </>
+        )}
+        toolbar={(
           <PermissionButton
             resourceKey="tianshu.button.SiCatalogPage.write"
             type="primary"
@@ -121,110 +181,64 @@ export default function SiCatalogPage() {
           >
             {t('si.catalog.createButton')}
           </PermissionButton>
-        }
-      />
-
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap style={{ width: '100%', marginBottom: 12 }}>
-          <Select
-            allowClear
-            placeholder={t('si.catalog.envPlaceholder')}
-            style={{ width: 120 }}
-            value={envCode}
-            onChange={setEnvCode}
-            options={['dev', 'test', 'staging', 'prod'].map((env) => ({ value: env, label: env }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('si.catalog.kindPlaceholder')}
-            style={{ width: 120 }}
-            value={kind}
-            onChange={setKind}
-            options={['AGENT', 'MCP', 'PROMPT', 'SKILL'].map((k) => ({ value: k, label: k }))}
-          />
-          <Select
-            allowClear
-            placeholder={t('common.status')}
-            style={{ width: 140 }}
-            value={lifecycleStatus}
-            onChange={setLifecycleStatus}
-            options={['DRAFT', 'PUBLISHED', 'DEPRECATED', 'ARCHIVED'].map((s) => ({ value: s, label: s }))}
-          />
-          <Input
-            placeholder={t('si.catalog.keywordFilterPlaceholder')}
-            style={{ width: 220 }}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-        </Space>
-
-        <Space.Compact style={{ width: '100%' }}>
-          <Input
-            data-testid="si-semantic-query-input"
-            placeholder={t('si.catalog.searchPlaceholder')}
-            value={semanticQuery}
-            onChange={(e) => setSemanticQuery(e.target.value)}
-          />
-          <Button
-            type="primary"
-            data-testid="si-semantic-search-btn"
-            loading={semanticMutation.isPending}
-            onClick={() => semanticQuery.trim() && semanticMutation.mutate(semanticQuery.trim())}
-          >
-            {t('si.catalog.semanticSearchBtn')}
-          </Button>
-        </Space.Compact>
-      </Card>
-
-      {semanticResult && (
-        <Card style={{ marginBottom: 16 }}>
-          {semanticResult.degradedToFtsOnly && (
-            <Alert
-              data-testid="si-fts-degraded-alert"
-              type="warning"
-              title={t('si.catalog.ftsDegradedAlert')}
-              style={{ marginBottom: 12 }}
-            />
-          )}
-          <Space orientation="vertical" style={{ width: '100%' }}>
-            {semanticResult.hits.map((hit) => (
-              <Card key={hit.resource.resourceKey} size="small">
-                <Space>
-                  <Tag color="geekblue">{t('si.catalog.rankBadge', { rank: hit.rank })}</Tag>
-                  <Button type="link" onClick={() => navigate(`/si/resources/${hit.resource.resourceId}`)}>
-                    {hit.resource.resourceKey}
-                  </Button>
-                  <span>{hit.resource.displayName}</span>
-                  <Tag color="green">
-                    {t('si.catalog.scoreValue', { score: hit.hybridScore.toFixed(2) })}
-                  </Tag>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <>
+            {semanticResult && (
+              <Card style={{ marginBottom: 16 }}>
+                {semanticResult.degradedToFtsOnly && (
+                  <Alert
+                    data-testid="si-fts-degraded-alert"
+                    type="warning"
+                    title={t('si.catalog.ftsDegradedAlert')}
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+                <Space orientation="vertical" style={{ width: '100%' }}>
+                  {semanticResult.hits.map((hit) => (
+                    <Card key={hit.resource.resourceKey} size="small">
+                      <Space>
+                        <Tag color="geekblue">{t('si.catalog.rankBadge', { rank: hit.rank })}</Tag>
+                        <Button type="link" onClick={() => navigate(`/si/resources/${hit.resource.resourceId}`)}>
+                          {hit.resource.resourceKey}
+                        </Button>
+                        <span>{hit.resource.displayName}</span>
+                        <Tag color="green">
+                          {t('si.catalog.scoreValue', { score: hit.hybridScore.toFixed(2) })}
+                        </Tag>
+                      </Space>
+                    </Card>
+                  ))}
                 </Space>
               </Card>
-            ))}
-          </Space>
-        </Card>
-      )}
+            )}
 
-      {catalogQuery.isError && (
-        <Alert
-          type="error"
-          title={formatAdminError(catalogQuery.error, t)}
-          action={
-            <Button size="small" onClick={() => void catalogQuery.refetch()}>
-              {t('common.retry')}
-            </Button>
-          }
-          style={{ marginBottom: 16 }}
-        />
-      )}
+            {catalogQuery.isError && (
+              <Alert
+                type="error"
+                title={formatAdminError(catalogQuery.error, t)}
+                action={
+                  <Button size="small" onClick={() => void catalogQuery.refetch()}>
+                    {t('common.retry')}
+                  </Button>
+                }
+                style={{ marginBottom: 16 }}
+              />
+            )}
 
-      <Table
-        rowKey="id"
-        loading={catalogQuery.isLoading}
-        dataSource={catalogQuery.data?.records ?? []}
-        columns={columns}
-        locale={{ emptyText: t('common.empty') }}
+            <Table
+              rowKey="id"
+              loading={catalogQuery.isLoading}
+              dataSource={catalogQuery.data?.records ?? []}
+              columns={columns}
+              locale={{ emptyText: t('common.empty') }}
+              pagination={false}
+            />
+          </>
+        )}
         pagination={{
+          mode: 'page',
           current: pageNo,
           pageSize: 20,
           total: catalogQuery.data?.page.total ?? 0,

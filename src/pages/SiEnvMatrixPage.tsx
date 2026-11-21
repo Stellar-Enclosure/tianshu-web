@@ -1,4 +1,5 @@
 import { PermissionButton } from '../permissions/access'
+import { useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { defineMessages } from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Space, Table, Tag } from 'antd'
@@ -19,6 +20,7 @@ export const siEnvMatrixMessages = defineMessages([
 
 export default function SiEnvMatrixPage() {
   const { t } = usePageMessages('tianshu.si')
+  const { embedded } = useEmbeddedWorkbench()
   const [params] = useSearchParams()
   const bizCode = params.get('bizCode') ?? 'ai'
   const namespaceCode = params.get('namespaceCode') ?? 'core'
@@ -103,8 +105,8 @@ export default function SiEnvMatrixPage() {
   ]
 
   return (
-    <div>
-      <AdminPageHeader title={t('si.matrix.title')} description={t('si.matrix.subtitle')} />
+    <div style={{ width: '100%' }}>
+      {!embedded && <AdminPageHeader title={t('si.matrix.title')} description={t('si.matrix.subtitle')} />}
       {matrixQuery.isError && (
         <Alert type="error" title={formatAdminError(matrixQuery.error, t)} style={{ marginBottom: 12 }} />
       )}

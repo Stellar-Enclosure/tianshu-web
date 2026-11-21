@@ -1,5 +1,6 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   keepPreviousData,
   useMutation,
@@ -9,7 +10,6 @@ import {
 import {
   App,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -39,6 +39,7 @@ type BizFormValues = {
 
 export default function BizsPage() {
   const { t, locale } = usePageMessages('tianshu.bizs')
+  const { embedded } = useEmbeddedWorkbench()
   const fieldsWritable = useDdcWritable('DdcBizBO')
   const mayMutate = useDdcPermission('tianshu.button.BizsPage.write') && fieldsWritable
   const { message } = App.useApp()
@@ -212,50 +213,62 @@ export default function BizsPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={<PermissionButton resourceKey="tianshu.button.BizsPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <Input
+              placeholder={t('filters.keyword')}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onPressEnter={applyFilter}
+              style={{ width: 220 }}
+            />
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
+          <PermissionButton resourceKey="tianshu.button.BizsPage.write" type="primary" onClick={openCreate}>
+            {t('actions.create')}
+          </PermissionButton>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <PageState
+            loading={query.isPending}
+            error={query.error}
+            empty={(query.data?.records.length ?? 0) === 0}
+            onRetry={() => { void query.refetch() }}
+          >
+            <Table<DdcBiz>
+              rowKey={(row) => row.id}
+              columns={columns}
+              dataSource={query.data?.records ?? []}
+              loading={query.isFetching}
+              size="small"
+              scroll={{ x: 'max-content' }}
+              pagination={false}
+            />
+          </PageState>
+        )}
+        pagination={{
+          mode: 'page',
+          current: query.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
+          total: query.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        }}
+        footer={query.data ? t('common.total', { total: query.data.page.total }) : undefined}
       />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input
-            placeholder={t('filters.keyword')}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onPressEnter={applyFilter}
-            style={{ width: 220 }}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        <PageState
-          loading={query.isPending}
-          error={query.error}
-          empty={(query.data?.records.length ?? 0) === 0}
-          onRetry={() => { void query.refetch() }}
-        >
-          <Table<DdcBiz>
-            rowKey={(row) => row.id}
-            columns={columns}
-            dataSource={query.data?.records ?? []}
-            loading={query.isFetching}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            pagination={{
-              current: query.data?.page.pageNo ?? pageState.page.pageNo,
-              pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
-              total: query.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: pageState.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
       <Modal
         open={open}
         title={editing ? t('actions.edit') : t('actions.create')}

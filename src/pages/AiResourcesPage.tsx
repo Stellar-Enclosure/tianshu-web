@@ -1,11 +1,11 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   App,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -15,7 +15,7 @@ import {
   Typography,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { DdcApiError } from '../api/client'
 import {
@@ -71,7 +71,13 @@ const initialDraft = (kind: DdcAiKind): DdcAiContent => kind === 'PROMPT'
   }
 
 export default function AiResourcesPage({ kind }: Props) {
+  const [searchParams] = useSearchParams()
+  return <AiResourcesPageInner key={`${kind}:${searchParams.toString()}`} kind={kind} />
+}
+
+function AiResourcesPageInner({ kind }: Props) {
   const { t, locale } = usePageMessages('tianshu.ai.resources')
+  const { embedded } = useEmbeddedWorkbench()
   const fieldsWritable = useDdcWritable('DdcAiCreateCommand')
   const mayMutate = useDdcPermission('tianshu.button.AiResourcesPage.ai_write') && fieldsWritable
   const { message, modal } = App.useApp()
@@ -87,10 +93,6 @@ export default function AiResourcesPage({ kind }: Props) {
   const [description, setDescription] = useState('')
   const [promptText, setPromptText] = useState('')
   const [skillFileText, setSkillFileText] = useState('')
-  useEffect(() => {
-    setDraftScope(scopeFromSearch(searchParams))
-    setResourceKeyPrefix(searchParams.get('resourceKeyPrefix') ?? '')
-  }, [searchParams])
 
   const submittedScope = useMemo(() => scopeFromSearch(searchParams), [searchParams])
   const pageNo = pageNumberFromSearch(searchParams)
@@ -172,7 +174,7 @@ export default function AiResourcesPage({ kind }: Props) {
       title: t('resources.resourceKey'),
       dataIndex: 'resourceKey',
       key: 'resourceKey',
-      render: (value: string, row) => <Typography.Text code>{value}</Typography.Text>,
+      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     { title: t('common.name'), dataIndex: 'displayName', key: 'displayName' },
     {
@@ -236,10 +238,12 @@ export default function AiResourcesPage({ kind }: Props) {
 
   return (
     <Space orientation="vertical" size="large" className="tianshu-ai-page">
-      <AdminPageHeader
-        title={kind === 'PROMPT' ? t('resources.promptTitle') : t('resources.skillTitle')}
-        description={t('resources.description')}
-      />
+      {!embedded && (
+        <AdminPageHeader
+          title={kind === 'PROMPT' ? t('resources.promptTitle') : t('resources.skillTitle')}
+          description={t('resources.description')}
+        />
+      )}
 
       <Alert
         type="info"
@@ -252,72 +256,71 @@ export default function AiResourcesPage({ kind }: Props) {
         }
       />
 
-      <Card>
-        <Space orientation="vertical" size="middle" className="tianshu-ai-page__filters">
-          <ScopeSelects value={draftScope} onChange={setDraftScope} />
-          <Space wrap>
-            <Input
-              aria-label={t('resources.keyPrefix')}
-              placeholder={t('resources.keyPrefix')}
-              maxLength={128}
-              value={resourceKeyPrefix}
-              onChange={(event) => setResourceKeyPrefix(event.target.value)}
-              onPressEnter={() => updateUrl(draftScope, resourceKeyPrefix)}
-            />
-            <Button
-              type="primary"
-              disabled={!scopeIsComplete(draftScope)}
-              onClick={() => updateUrl(draftScope, resourceKeyPrefix)}
-            >
-              {t('common.search')}
-            </Button>
-            <Button onClick={() => {
-              setDraftScope({ ...emptyScope })
-              setResourceKeyPrefix('')
-              updateUrl(emptyScope, '')
-            }}>
-              {t('common.reset')}
-            </Button>
+      <WorkspaceList
+        ariaLabel={kind === 'PROMPT' ? t('resources.promptTitle') : t('resources.skillTitle')}
+        filters={(
+          <Space orientation="vertical" size="middle" className="tianshu-ai-page__filters">
+            <ScopeSelects value={draftScope} onChange={setDraftScope} />
+            <Space wrap>
+              <Input
+                aria-label={t('resources.keyPrefix')}
+                placeholder={t('resources.keyPrefix')}
+                maxLength={128}
+                value={resourceKeyPrefix}
+                onChange={(event) => setResourceKeyPrefix(event.target.value)}
+                onPressEnter={() => updateUrl(draftScope, resourceKeyPrefix)}
+              />
+              <Button
+                type="primary"
+                disabled={!scopeIsComplete(draftScope)}
+                onClick={() => updateUrl(draftScope, resourceKeyPrefix)}
+              >
+                {t('common.search')}
+              </Button>
+              <Button onClick={() => {
+                setDraftScope({ ...emptyScope })
+                setResourceKeyPrefix('')
+                updateUrl(emptyScope, '')
+              }}>
+                {t('common.reset')}
+              </Button>
+            </Space>
           </Space>
-        </Space>
-      </Card>
-
-      {!completeScope && (
-        <Alert type="info" showIcon title={t('resources.scopeRequired')} />
-      )}
-      {denied && (
-        <Alert type="error" showIcon title={t('resources.readDenied')} description={formatAdminError(resourcesQuery.error, t)} />
-      )}
-      {queryFailure && (
-        <Alert type="error" showIcon title={t('resources.readFailed')} description={formatAdminError(resourcesQuery.error, t)} />
-      )}
-
-      {completeScope && !denied && !queryFailure && (
-        <Card
-          title={kind === 'PROMPT' ? t('resources.promptDrafts') : t('resources.skillDrafts')}
-          extra={(
-            <PermissionButton resourceKey="tianshu.button.AiResourcesPage.ai_write" type="primary" disabled={resourcesQuery.isPending} onClick={openCreate}>
-              {t('resources.createKind', { kind: t(`resources.kind.${kind}`) })}
-            </PermissionButton>
-          )}
-        >
-          <Table<DdcAiResourceSummary>
-            rowKey="id"
-            columns={columns}
-            dataSource={resourcesQuery.data?.records ?? []}
-            loading={resourcesQuery.isPending || resourcesQuery.isFetching}
-            locale={{ emptyText: t('resources.emptyKind', { kind: t(`resources.kind.${kind}`) }) }}
-            pagination={{
-              current: pageNo,
-              pageSize: PAGE_SIZE,
-              total: resourcesQuery.data?.page.total ?? 0,
-              showSizeChanger: false,
-              showTotal: (total) => t('common.total', { total }),
-              onChange: (nextPage) => updateUrl(submittedScope, params.resourceKeyPrefix ?? '', nextPage),
-            }}
-          />
-        </Card>
-      )}
+        )}
+        toolbar={completeScope && !denied && !queryFailure ? (
+          <PermissionButton resourceKey="tianshu.button.AiResourcesPage.ai_write" type="primary" disabled={resourcesQuery.isPending} onClick={openCreate}>
+            {t('resources.createKind', { kind: t(`resources.kind.${kind}`) })}
+          </PermissionButton>
+        ) : undefined}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={
+          !completeScope ? (
+            <Alert type="info" showIcon title={t('resources.scopeRequired')} />
+          ) : denied ? (
+            <Alert type="error" showIcon title={t('resources.readDenied')} description={formatAdminError(resourcesQuery.error, t)} />
+          ) : queryFailure ? (
+            <Alert type="error" showIcon title={t('resources.readFailed')} description={formatAdminError(resourcesQuery.error, t)} />
+          ) : (
+            <Table<DdcAiResourceSummary>
+              rowKey="id"
+              columns={columns}
+              dataSource={resourcesQuery.data?.records ?? []}
+              loading={resourcesQuery.isPending || resourcesQuery.isFetching}
+              locale={{ emptyText: t('resources.emptyKind', { kind: t(`resources.kind.${kind}`) }) }}
+              pagination={false}
+            />
+          )
+        }
+        pagination={completeScope && !denied && !queryFailure ? {
+          mode: 'page',
+          current: pageNo,
+          pageSize: PAGE_SIZE,
+          total: resourcesQuery.data?.page.total ?? 0,
+          showSizeChanger: false,
+          onChange: (nextPage) => updateUrl(submittedScope, params.resourceKeyPrefix ?? '', nextPage),
+        } : undefined}
+        footer={completeScope && !denied && !queryFailure && resourcesQuery.data ? t('common.total', { total: resourcesQuery.data.page.total }) : undefined}
+      />
 
       <Modal
         title={t('resources.createKindDraft', { kind: t(`resources.kind.${kind}`) })}

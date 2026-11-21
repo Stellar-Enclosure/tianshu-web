@@ -1,4 +1,5 @@
 import { PermissionButton } from '../permissions/access'
+import { useEmbeddedWorkbench, useWorkbenchLeaveGuard } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { defineMessages } from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Form, Input, InputNumber, Space, Tabs } from 'antd'
@@ -45,10 +46,12 @@ const capabilityFingerprint = (text?: string): string | undefined => {
 
 export default function SiResourceEditorPage() {
   const { t } = usePageMessages('tianshu.si')
+  const { embedded, activeTabKey } = useEmbeddedWorkbench()
   const { message } = App.useApp()
   const { id } = useParams()
   const isNew = !id || id === 'new'
   const navigate = useNavigate()
+  const siTabKey = activeTabKey ?? (isNew ? '["tianshu","tianshu.page.siEditor.new"]' : JSON.stringify(['tianshu', 'tianshu.page.siEditor', id]))
 
   const [bizCode, setBizCode] = useState('ai')
   const [namespaceCode, setNamespaceCode] = useState('core')
@@ -69,6 +72,7 @@ export default function SiResourceEditorPage() {
   const [rawSpecJson, setRawSpecJson] = useState('{}')
   const [secretLeakDetected, setSecretLeakDetected] = useState(false)
   const [conflictDetected, setConflictDetected] = useState(false)
+  const [savedMarker, setSavedMarker] = useState<string | null>(null)
 
   const detailQuery = useQuery({
     queryKey: ddcSiQueryKeys.detail(id ?? 'new'),
@@ -85,6 +89,28 @@ export default function SiResourceEditorPage() {
   })
   const draftFingerprint = capabilityFingerprint(rawSpecJson)
   const publishedFingerprint = capabilityFingerprint(publishedMcp.data?.specJson)
+  const currentDraftSignature = JSON.stringify([kind, resourceKey, displayName, description, modelKey, systemPromptKey, timeoutSeconds, mcpTransport, mcpEndpoint, mcpCommand, mcpHeadersJson, rawSpecJson])
+  const baselineSignature = detailQuery.data
+    ? JSON.stringify([
+        detailQuery.data.kind,
+        detailQuery.data.resourceKey,
+        detailQuery.data.displayName,
+        detailQuery.data.description ?? '',
+        'gpt-6-luna',
+        '',
+        30,
+        'STDIO',
+        '',
+        '',
+        '{}',
+        detailQuery.data.specJson ?? '{}',
+      ])
+    : JSON.stringify(['AGENT', '', '', '', 'gpt-6-luna', '', 30, 'STDIO', '', '', '{}', '{}'])
+  const isDirty = savedMarker !== null
+    ? currentDraftSignature !== savedMarker
+    : isNew
+      ? currentDraftSignature !== baselineSignature
+      : Boolean(detailQuery.data && (displayName !== detailQuery.data.displayName || description !== (detailQuery.data.description ?? '') || rawSpecJson !== (detailQuery.data.specJson ?? '{}')))
 
   useEffect(() => {
     if (!detailQuery.data) return
@@ -176,6 +202,7 @@ export default function SiResourceEditorPage() {
       })
     },
     onSuccess: (saved) => {
+      setSavedMarker(currentDraftSignature)
       message.success(t('si.editor.saveSuccess'))
       if (isNew) {
         navigate(`/si/resources/${saved.id}`, { replace: true })
@@ -203,35 +230,64 @@ export default function SiResourceEditorPage() {
     onError: (err) => message.error(formatAdminError(err, t)),
   })
 
+  useWorkbenchLeaveGuard(siTabKey, {
+    dirty: isDirty,
+    pendingMutation: saveMutation.isPending || publishMutation.isPending,
+  })
+
   return (
-    <div>
-      <AdminPageHeader
-        title={isNew ? t('si.editor.createTitle') : t('si.editor.editTitle')}
-        description=""
-        extra={
-          <Space>
-            <Button onClick={() => navigate('/si/catalog')}>{t('common.back')}</Button>
-            {!isNew && (
+    <div style={{ width: '100%' }}>
+      {!embedded ? (
+        <AdminPageHeader
+          title={isNew ? t('si.editor.createTitle') : t('si.editor.editTitle')}
+          description=""
+          extra={
+            <Space>
+              <Button onClick={() => navigate('/si/catalog')}>{t('common.back')}</Button>
+              {!isNew && (
+                <PermissionButton
+                  resourceKey="tianshu.button.SiResourceEditorPage.publish"
+                  loading={publishMutation.isPending}
+                  onClick={() => publishMutation.mutate()}
+                >
+                  {t('si.editor.publishBtn')}
+                </PermissionButton>
+              )}
               <PermissionButton
-                resourceKey="tianshu.button.SiResourceEditorPage.publish"
-                loading={publishMutation.isPending}
-                onClick={() => publishMutation.mutate()}
+                resourceKey="tianshu.button.SiResourceEditorPage.write"
+                type="primary"
+                data-testid="si-save-draft-btn"
+                loading={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
               >
-                {t('si.editor.publishBtn')}
+                {t('si.editor.saveDraftBtn')}
               </PermissionButton>
-            )}
+            </Space>
+          }
+        />
+      ) : (
+        <Space style={{ marginBottom: 12 }}>
+          <Button onClick={() => navigate('/si/catalog')}>{t('common.back')}</Button>
+          {!isNew && (
             <PermissionButton
-              resourceKey="tianshu.button.SiResourceEditorPage.write"
-              type="primary"
-              data-testid="si-save-draft-btn"
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
+              resourceKey="tianshu.button.SiResourceEditorPage.publish"
+              loading={publishMutation.isPending}
+              onClick={() => publishMutation.mutate()}
             >
-              {t('si.editor.saveDraftBtn')}
+              {t('si.editor.publishBtn')}
             </PermissionButton>
-          </Space>
-        }
-      />
+          )}
+          <PermissionButton
+            resourceKey="tianshu.button.SiResourceEditorPage.write"
+            type="primary"
+            data-testid="si-save-draft-btn"
+            loading={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {t('si.editor.saveDraftBtn')}
+          </PermissionButton>
+        </Space>
+      )}
 
       {secretLeakDetected && (
         <Alert data-testid="si-secret-leak-alert" type="error" title={t('si.editor.secretLeakError')} style={{ marginBottom: 12 }} />

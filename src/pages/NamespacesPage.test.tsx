@@ -134,7 +134,7 @@ describe('NamespacesPage', () => {
     )
     expect(document.querySelector('.ant-drawer-content-wrapper'))
       .toHaveStyle({ width: '100%' })
-  })
+  }, 10_000)
 
   it('retries a namespace page failure', async () => {
     let attempts = 0

@@ -1,5 +1,6 @@
 import {useDdcWritable} from '../permissions/FieldCatalog'
 import {PermissionButton, useDdcPermission} from '../permissions/access'
+import { WorkspaceList, useEmbeddedWorkbench } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {
   keepPreviousData,
   useMutation,
@@ -9,7 +10,6 @@ import {
 import {
   App,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -48,6 +48,7 @@ const emptyFilter: BindingFilter = {
 
 export default function BindingsPage() {
   const { t } = usePageMessages('tianshu.bindings')
+  const { embedded } = useEmbeddedWorkbench()
   const fieldsWritable = useDdcWritable('DdcNamespaceEnvAppBindingRequest')
   const mayMutate = useDdcPermission('tianshu.button.BindingsPage.write') && fieldsWritable
   const { message } = App.useApp()
@@ -164,92 +165,104 @@ export default function BindingsPage() {
 
   return (
     <div>
-      <AdminPageHeader
-        title={t('title')}
-        description={t('description')}
-        extra={<PermissionButton resourceKey="tianshu.button.BindingsPage.write" type="primary" onClick={openCreate}>{t('actions.create')}</PermissionButton>}
+      {!embedded && (
+        <AdminPageHeader
+          title={t('title')}
+          description={t('description')}
+        />
+      )}
+      <WorkspaceList
+        ariaLabel={t('title')}
+        filters={(
+          <Space wrap>
+            <Input
+              aria-label={t('fields.bizCode')}
+              placeholder={t('fields.bizCode')}
+              value={draft.bizCode}
+              onChange={(event) => setDraft({ ...draft, bizCode: event.target.value })}
+            />
+            <Input
+              aria-label={t('fields.namespaceCode')}
+              placeholder={t('fields.namespaceCode')}
+              value={draft.namespaceCode}
+              onChange={(event) => setDraft({ ...draft, namespaceCode: event.target.value })}
+            />
+            <Input
+              aria-label={t('fields.env')}
+              placeholder={t('fields.env')}
+              value={draft.env}
+              onChange={(event) => setDraft({ ...draft, env: event.target.value })}
+            />
+            <Input
+              aria-label={t('fields.appCode')}
+              placeholder={t('fields.appCode')}
+              value={draft.appCode}
+              onChange={(event) => setDraft({ ...draft, appCode: event.target.value })}
+              onPressEnter={applyFilter}
+            />
+            <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
+            <Button onClick={resetFilter}>{t('common.reset')}</Button>
+          </Space>
+        )}
+        toolbar={(
+          <PermissionButton resourceKey="tianshu.button.BindingsPage.write" type="primary" onClick={openCreate}>
+            {t('actions.create')}
+          </PermissionButton>
+        )}
+        pageState={{ loading: false, error: undefined, empty: false }}
+        table={(
+          <PageState
+            loading={query.isPending}
+            error={query.error}
+            empty={(query.data?.records.length ?? 0) === 0}
+            onRetry={() => { void query.refetch() }}
+          >
+            <Table<DdcNamespaceEnvAppBinding>
+              rowKey={(row) => row.id}
+              size="small"
+              scroll={{ x: 'max-content' }}
+              loading={query.isFetching}
+              dataSource={query.data?.records ?? []}
+              columns={[
+                { title: t('fields.bizCode'), dataIndex: 'bizCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+                { title: t('fields.namespace'), dataIndex: 'namespaceCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+                { title: t('fields.env'), dataIndex: 'env' },
+                { title: t('fields.app'), dataIndex: 'appCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+                { title: t('fields.appName'), dataIndex: 'appName' },
+                { title: t('common.enabled'), dataIndex: 'enabled', render: (enabled: boolean) => <Switch checked={enabled} disabled /> },
+                {
+                  title: t('common.actions'),
+                  fixed: 'right' as const,
+                  render: (_value: unknown, item: DdcNamespaceEnvAppBinding) => (
+                    <Space>
+                      <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" onClick={() => openEdit(item)}>{t('common.edit')}</PermissionButton>
+                      <Popconfirm disabled={!mayMutate}
+                        title={t('confirm.delete', { namespaceCode: item.namespaceCode, env: item.env, appCode: item.appCode })}
+                        onConfirm={() => removeMutation.mutate(item)}
+                      >
+                        <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" danger loading={removeMutation.isPending && removeMutation.variables?.id === item.id}>
+                          {t('common.delete')}
+                        </PermissionButton>
+                      </Popconfirm>
+                    </Space>
+                  ),
+                },
+              ]}
+              pagination={false}
+            />
+          </PageState>
+        )}
+        pagination={{
+          mode: 'page',
+          current: query.data?.page.pageNo ?? pageState.page.pageNo,
+          pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
+          total: query.data?.page.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onChange: pageState.onTableChange,
+        }}
+        footer={query.data ? t('common.total', { total: query.data.page.total }) : undefined}
       />
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input
-            aria-label={t('fields.bizCode')}
-            placeholder={t('fields.bizCode')}
-            value={draft.bizCode}
-            onChange={(event) => setDraft({ ...draft, bizCode: event.target.value })}
-          />
-          <Input
-            aria-label={t('fields.namespaceCode')}
-            placeholder={t('fields.namespaceCode')}
-            value={draft.namespaceCode}
-            onChange={(event) => setDraft({ ...draft, namespaceCode: event.target.value })}
-          />
-          <Input
-            aria-label={t('fields.env')}
-            placeholder={t('fields.env')}
-            value={draft.env}
-            onChange={(event) => setDraft({ ...draft, env: event.target.value })}
-          />
-          <Input
-            aria-label={t('fields.appCode')}
-            placeholder={t('fields.appCode')}
-            value={draft.appCode}
-            onChange={(event) => setDraft({ ...draft, appCode: event.target.value })}
-            onPressEnter={applyFilter}
-          />
-          <Button type="primary" onClick={applyFilter}>{t('common.search')}</Button>
-          <Button onClick={resetFilter}>{t('common.reset')}</Button>
-        </Space>
-      </Card>
-      <Card size="small" title={t('list.title')}>
-        <PageState
-          loading={query.isPending}
-          error={query.error}
-          empty={(query.data?.records.length ?? 0) === 0}
-          onRetry={() => { void query.refetch() }}
-        >
-          <Table<DdcNamespaceEnvAppBinding>
-            rowKey={(row) => row.id}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            loading={query.isFetching}
-            dataSource={query.data?.records ?? []}
-            columns={[
-              { title: t('fields.bizCode'), dataIndex: 'bizCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: t('fields.namespace'), dataIndex: 'namespaceCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: t('fields.env'), dataIndex: 'env' },
-              { title: t('fields.app'), dataIndex: 'appCode', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
-              { title: t('fields.appName'), dataIndex: 'appName' },
-              { title: t('common.enabled'), dataIndex: 'enabled', render: (enabled: boolean) => <Switch checked={enabled} disabled /> },
-              {
-                title: t('common.actions'),
-                fixed: 'right' as const,
-                render: (_value: unknown, item: DdcNamespaceEnvAppBinding) => (
-                  <Space>
-                    <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" onClick={() => openEdit(item)}>{t('common.edit')}</PermissionButton>
-                    <Popconfirm disabled={!mayMutate}
-                      title={t('confirm.delete', { namespaceCode: item.namespaceCode, env: item.env, appCode: item.appCode })}
-                      onConfirm={() => removeMutation.mutate(item)}
-                    >
-                      <PermissionButton resourceKey="tianshu.button.BindingsPage.write" size="small" danger loading={removeMutation.isPending && removeMutation.variables?.id === item.id}>
-                        {t('common.delete')}
-                      </PermissionButton>
-                    </Popconfirm>
-                  </Space>
-                ),
-              },
-            ]}
-            pagination={{
-              current: query.data?.page.pageNo ?? pageState.page.pageNo,
-              pageSize: query.data?.page.pageSize ?? pageState.page.pageSize,
-              total: query.data?.page.total ?? 0,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50],
-              showTotal: (total) => t('common.total', { total }),
-              onChange: pageState.onTableChange,
-            }}
-          />
-        </PageState>
-      </Card>
       <Modal
         open={open}
         title={editing ? t('dialog.edit') : t('dialog.create')}
